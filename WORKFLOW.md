@@ -42,7 +42,7 @@ wechatsync sync src/content/posts/你的文章.md -t "文章标题" -p zhihu,csd
 |---|---|
 | git 推送凭据 | ✅ token 已存 `~/.git-credentials`（过期后去 GitHub 重新生成并 `git remote set-url`） |
 | Chrome + 文章同步助手扩展 | ✅ 装在本机 Chrome |
-| 扩展 ↔ CLI 的 Token | ✅ 两边一致（CLI 端是环境变量 `WECHATSYNC_TOKEN`） |
+| 扩展 ↔ CLI 的 Token | ✅ 两边一致（扩展端 Token 见扩展设置；CLI 端 `export WECHATSYNC_TOKEN=<扩展设置里显示的值>`） |
 
 ## 三、Wechatsync 使用要点（踩过的坑）
 
