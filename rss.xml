@@ -1,0 +1,2918 @@
+<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>木子点灯</title><description>愿有岁月可回首，且以追忆共白头</description><link>https://liushuideng.com/</link><language>zh_CN</language><item><title>多层最短路</title><link>https://liushuideng.com/posts/duo-ceng-zui-duan-lu/</link><guid isPermaLink="true">https://liushuideng.com/posts/duo-ceng-zui-duan-lu/</guid><pubDate>Thu, 08 May 2025 00:00:00 GMT</pubDate><content:encoded>&lt;pre&gt;&lt;code&gt;#include &amp;lt;iostream&amp;gt;
+#include &amp;lt;vector&amp;gt;
+#include &amp;lt;limits&amp;gt;
+#include &amp;lt;tuple&amp;gt;
+#include &amp;lt;cstdlib&amp;gt;
+#include &amp;lt;chrono&amp;gt;
+#include &amp;lt;algorithm&amp;gt; // 用于 make_heap, push_heap, pop_heap
+#include &amp;lt;unordered_map&amp;gt;
+
+using namespace std;
+
+// 定义一个常量表示无穷大
+const int INF = numeric_limits&amp;lt;int&amp;gt;::max();
+
+// 定义一个结构体表示图中的边
+struct Edge {
+    int to;     // 目标节点
+    int cost;   // 边的代价
+};
+
+// 自定义二叉堆
+class BinaryHeap {
+public:
+    using Element = tuple&amp;lt;int, int, int&amp;gt;; // (当前代价, 当前层, 当前节点)
+
+    // 插入元素
+    void push(const Element&amp;amp; element) {
+        heap.push_back(element);
+        push_heap(heap.begin(), heap.end(), compare);
+    }
+
+    // 弹出最小元素
+    void pop() {
+        pop_heap(heap.begin(), heap.end(), compare);
+        heap.pop_back();
+    }
+
+    // 获取最小元素
+    Element top() const {
+        return heap.front();
+    }
+
+    // 判断堆是否为空
+    bool empty() const {
+        return heap.empty();
+    }
+
+private:
+    vector&amp;lt;Element&amp;gt; heap;
+
+    // 比较函数，用于实现最小堆
+    static bool compare(const Element&amp;amp; a, const Element&amp;amp; b) {
+        return get&amp;lt;0&amp;gt;(a) &amp;gt; get&amp;lt;0&amp;gt;(b); // 按代价升序排列
+    }
+};
+
+// 修改后的 Dijkstra 算法
+using InterLayerConnections = vector&amp;lt;unordered_map&amp;lt;int, vector&amp;lt;pair&amp;lt;int, int&amp;gt;&amp;gt;&amp;gt;&amp;gt;;
+
+void dijkstra(int startLayer, int startNode, const vector&amp;lt;vector&amp;lt;vector&amp;lt;Edge&amp;gt;&amp;gt;&amp;gt;&amp;amp; graph,
+    const InterLayerConnections&amp;amp; interLayerCost, vector&amp;lt;vector&amp;lt;int&amp;gt;&amp;gt;&amp;amp; minCost) {
+    int layers = graph.size();
+    int nodes = graph[0].size();
+
+    // 自定义二叉堆，存储 (当前代价, 当前层, 当前节点)
+    BinaryHeap pq;
+
+    // 初始化最小代价数组
+    for (int i = 0; i &amp;lt; layers; ++i) {
+        fill(minCost[i].begin(), minCost[i].end(), INF);
+    }
+
+    // 将起始节点加入队列
+    minCost[startLayer][startNode] = 0;
+    pq.push({ 0, startLayer, startNode });
+
+    // Dijkstra 主循环
+    while (!pq.empty()) {
+        auto [currentCost, currentLayer, currentNode] = pq.top();
+        pq.pop();
+
+        // 如果当前代价大于已记录的最小代价，跳过
+        if (currentCost &amp;gt; minCost[currentLayer][currentNode]) continue;
+
+        // 遍历当前层的邻接节点
+        for (const auto&amp;amp; edge : graph[currentLayer][currentNode]) {
+            int nextNode = edge.to;
+            int nextCost = currentCost + edge.cost;
+
+            if (nextCost &amp;lt; minCost[currentLayer][nextNode]) {
+                minCost[currentLayer][nextNode] = nextCost;
+                pq.push({ nextCost, currentLayer, nextNode });
+            }
+        }
+
+        // 遍历层间连接
+        if (interLayerCost[currentLayer].count(currentNode)) {
+            for (const auto&amp;amp; [nextLayer, cost] : interLayerCost[currentLayer].at(currentNode)) {
+                int nextCost = currentCost + cost;
+                if (nextCost &amp;lt; minCost[nextLayer][currentNode]) {
+                    minCost[nextLayer][currentNode] = nextCost;
+                    pq.push({ nextCost, nextLayer, currentNode });
+                }
+            }
+        }
+    }
+}
+
+int main() {
+    // 示例输入数据
+    int layers = 240;  // 层数
+    int nodes = 1000;  // 每层的节点数
+
+    // 每层的图结构 (层 -&amp;gt; 节点 -&amp;gt; 边)
+    vector&amp;lt;vector&amp;lt;vector&amp;lt;Edge&amp;gt;&amp;gt;&amp;gt; graph(layers, vector&amp;lt;vector&amp;lt;Edge&amp;gt;&amp;gt;(nodes));
+
+    // 构造每层的边，尽量构造平面图
+    for (int layer = 0; layer &amp;lt; layers; ++layer) {
+        for (int node = 0; node &amp;lt; nodes; ++node) {
+            // 每个节点连接到下一个节点，形成一个环
+            int nextNode = (node + 1) % nodes;
+            graph[layer][node].push_back({ nextNode, rand() % 10 + 1 }); // 随机权重1-10
+
+            // 添加额外的边，确保每层有5000条边以上
+            for (int i = 0; i &amp;lt; 5; ++i) {
+                int randomNode = rand() % nodes;
+                if (randomNode != node) {
+                    graph[layer][node].push_back({ randomNode, rand() % 10 + 1 });
+                }
+            }
+        }
+    }
+
+    // 定义层间连接关系的稀疏存储结构
+    InterLayerConnections interLayerCost(layers);
+
+    // 构造层间连接代价
+    for (int layer = 0; layer &amp;lt; layers - 1; ++layer) {
+        for (int node = 0; node &amp;lt; nodes; ++node) {
+            // 只有三分之一的节点有层间连接
+            if (rand() % 3 == 0) {
+                int cost = rand() % 2000 + 1000; // 随机权重1000-3000
+                interLayerCost[layer][node].push_back({ layer + 1, cost }); // 当前层到下一层
+                interLayerCost[layer + 1][node].push_back({ layer, cost }); // 下一层到当前层
+            }
+        }
+    }
+
+    // 最后一层连接回第一层
+    for (int node = 0; node &amp;lt; nodes; ++node) {
+        if (rand() % 3 == 0) {
+            int lastCost = rand() % 2000 + 1000; // 随机权重10-30
+            interLayerCost[layers - 1][node].push_back({ 0, lastCost }); // 最后一层到第一层
+            interLayerCost[0][node].push_back({ layers - 1, lastCost }); // 第一层到最后一层
+        }
+    }
+
+    // 起始节点和层
+    int startNode = 0;
+    int startLayer = 0;
+
+    // 最小代价数组
+    vector&amp;lt;vector&amp;lt;int&amp;gt;&amp;gt; minCost(layers, vector&amp;lt;int&amp;gt;(nodes, INF));
+
+    // 运行Dijkstra算法
+    auto startTime = chrono::high_resolution_clock::now(); // 开始计时
+
+    dijkstra(startLayer, startNode, graph, interLayerCost, minCost);
+
+    auto endTime = chrono::high_resolution_clock::now(); // 结束计时
+    auto duration = chrono::duration_cast&amp;lt;chrono::milliseconds&amp;gt;(endTime - startTime);
+    cout &amp;lt;&amp;lt; &quot;Total Dijkstra computation time: &quot; &amp;lt;&amp;lt; duration.count() &amp;lt;&amp;lt; &quot; ms&quot; &amp;lt;&amp;lt; endl;
+
+    return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+</content:encoded></item><item><title>常用绘图工具</title><link>https://liushuideng.com/posts/chang-yong-hui-tu-gong-ju/</link><guid isPermaLink="true">https://liushuideng.com/posts/chang-yong-hui-tu-gong-ju/</guid><description>1. AxGlyph 2. Fritzing</description><pubDate>Fri, 01 Sep 2023 00:00:00 GMT</pubDate><content:encoded>&lt;ol&gt;
+&lt;li&gt;AxGlyph
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/202309010051199.PNG&quot; alt=&quot;&quot; /&gt;&lt;/li&gt;
+&lt;li&gt;Fritzing&lt;/li&gt;
+&lt;/ol&gt;
+</content:encoded></item><item><title>python使用百度AI识别表情包文字</title><link>https://liushuideng.com/posts/python-shi-yong-bai-du-ai-shi-bie-biao-qing-bao-wen-zi/</link><guid isPermaLink="true">https://liushuideng.com/posts/python-shi-yong-bai-du-ai-shi-bie-biao-qing-bao-wen-zi/</guid><description>从网络上下载表情包，下载的图片名称都是随机的字符串，不利于我们对表情包分类管理，现在我们想利用表情包里的文字命名图片，便于我们搜索和整理，记录下python实现</description><pubDate>Wed, 23 Aug 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;从网络上下载表情包，下载的图片名称都是随机的字符串，不利于我们对表情包分类管理，现在我们想利用表情包里的文字命名图片，便于我们搜索和整理，记录下python实现过程。刚写完这篇帖子发现把表情包图片都放在手机里，微信有个自带搜索功能可以搜索图片内的文字，我枯了&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;实现效果&lt;/h1&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/202308222214933.PNG&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+&lt;h1&gt;背景知识&lt;/h1&gt;
+&lt;p&gt;识别图像中文字的技术叫OCR，指利用图像光学上的特征进行文字或者图形识别。早期的OCR技术主要是使用图形特征的技巧进行识别的，后来OCR主要由AI算法进行。&lt;/p&gt;
+&lt;p&gt;这次的实践搜索了下，python上传统的OCR识别库主要是Tesseract，这个库很早就开发了，主要是使用上不是pip库而是安装文件，需要配置环境变量，而且还担心识别效果泛华不好的问题，所以我选择了另外一种方案就是调用百度AI提供的文字识别接口进行处理。&lt;/p&gt;
+&lt;h1&gt;方案原理&lt;/h1&gt;
+&lt;p&gt;百度AI把识别的接口通过SDK提供给我们，所以我们需要做的就非常简单了，直接把文件丢给百度AI，返回识别结果重命名文件就可以了。这里图片识别的模型啥的对我们都是不可见的，我们发动“调包侠”技能就能快速完成这个需求。&lt;/p&gt;
+&lt;h1&gt;操作步骤&lt;/h1&gt;
+&lt;h2&gt;注册百度AI账号和应用&lt;/h2&gt;
+&lt;p&gt;类似大多数在线平台，需要先注册账号和应用以便百度提供对应的接口的用户ID给你，打开链接：&lt;a href=&quot;https://ai.baidu.com/&quot;&gt;百度AI&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;注册账号，登陆，然后点击右上角控制台，然后产品服务里面提供了非常多AI的功能，选择人工智能下面的文字识别&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/python_emoti_baiduai_textrec.png&quot; alt=&quot;python_emoti_baiduai_textrec&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;选择创建应用，然后填写一下描述即可。然后你会得到一个app id如下图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/python_emoti_baiduai_appid.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;有了这个ID之后就可以在python脚本里面调用了。&lt;/p&gt;
+&lt;h2&gt;安装python百度AI工具包&lt;/h2&gt;
+&lt;pre&gt;&lt;code&gt;  pip install baidu-aip
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;撸代码&lt;/h2&gt;
+&lt;p&gt;本来是准备用SDK的方式调用的，试了下demo代码没有调通，最后用了web api版本，代码里面指定图片文件夹就可以了，脚本会依次遍历所有的图片并转换。因为图片是从知乎的帖子爬的，所以代码里会有特殊判断去掉知乎相关的字样。因为AI识别稳定性的原因，部分识别不出来的图片可以挑出来多跑几次，基本可以全部识别。&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# encoding:utf-8
+import os
+
+from aip import AipOcr
+import re
+
+
+def validateTitle(title):
+    rstr = r&quot;[\/\\\:\*\?\&quot;\&amp;lt;\&amp;gt;\|]&quot;
+    new_title = re.sub(rstr, &quot;_&quot;, title)
+    return new_title
+
+def get_file_content(filePath):
+    with open(filePath, &apos;rb&apos;) as fp:
+        return fp.read()
+
+
+def RecOnePic(client, filePath):
+    image = get_file_content(filePath)
+    &quot;&quot;&quot; 如果有可选参数 &quot;&quot;&quot;
+    options = {}
+    options[&quot;detect_direction&quot;] = &quot;true&quot;
+    options[&quot;detect_language&quot;] = &quot;true&quot;
+
+    &quot;&quot;&quot; 带参数调用通用文字识别, 图片参数为本地图片 &quot;&quot;&quot;
+    msg = client.basicGeneral(image, options)
+    result = &apos;&apos;
+    for item in msg.get(&apos;words_result&apos;, &apos;None&apos;):
+        if (&apos;words&apos; in item):
+           if (&apos;知&apos; not in item[&apos;words&apos;] and &apos;乎&apos; not in item[&apos;words&apos;] and &apos;@&apos; not in item[&apos;words&apos;]):
+                result += item[&apos;words&apos;]
+
+        else:
+            result = &apos;无法识别&apos;
+            return
+    if (result != &apos;&apos;):
+        result = validateTitle(result)
+        try:
+            os.rename(os.path.join(filePath), os.path.join(os.path.dirname(filePath), result + &quot;.jpg&quot;))
+            print(result)
+        except IOError:
+            print(&quot;Error: 没有找到文件或读取文件失败&quot;)
+
+&apos;&apos;&apos;
+网络图片文字识别
+&apos;&apos;&apos;
+def walkFile(file):
+    filePaths = []
+    for root, dirs, files in os.walk(file):
+
+        # root 表示当前正在访问的文件夹路径
+        # dirs 表示该文件夹下的子目录名list
+        # files 表示该文件夹下的文件list
+
+        # 遍历文件
+        for f in files:
+            filePaths.append(os.path.join(root, f))
+
+    return  filePaths
+
+if __name__ == &apos;__main__&apos;:
+
+
+    &quot;&quot;&quot; 你的 APPID AK SK &quot;&quot;&quot;
+    APP_ID = &apos;这里填你的APP_ID数字&apos;
+    API_KEY = &apos;这里填你的API_KEY&apos;
+    SECRET_KEY = &apos;这里填你的SECRET_KEY&apos;
+
+    client = AipOcr(APP_ID, API_KEY, SECRET_KEY)
+
+    filePaths = walkFile(&apos;D:\\04.Code\\test\\zhihu_pic&apos;)
+    for filePath in filePaths:
+        print(filePath)
+        RecOnePic(client, filePath)
+&lt;/code&gt;&lt;/pre&gt;
+</content:encoded></item><item><title>使用python统计git仓库中频繁修改的热点函数</title><link>https://liushuideng.com/posts/shi-yong-python-tong-ji-git-cang-ku-zhong-pin-fan-xiu-gai-de-re-dian-han-shu/</link><guid isPermaLink="true">https://liushuideng.com/posts/shi-yong-python-tong-ji-git-cang-ku-zhong-pin-fan-xiu-gai-de-re-dian-han-shu/</guid><description>本篇博客以开源代码RT Thread为例，描述了如何使用python扫描统计代码中频繁修改的函数，帮助我们发现系统中需求变化和BUG制造的重灾区。 需求背景 最</description><pubDate>Tue, 22 Aug 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;本篇博客以开源代码&lt;a href=&quot;https://gitee.com/rtthread/rt-thread&quot;&gt;RT-Thread&lt;/a&gt;为例，描述了如何使用python扫描统计代码中频繁修改的函数，帮助我们发现系统中需求变化和BUG制造的重灾区。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2&gt;需求背景&lt;/h2&gt;
+&lt;p&gt;最近在学习设计模式时，印象深刻的一句话就是“要将设计模式应用在不稳定、频繁修改的地方，在变化处应用招式”，那么什么样的地方是频繁变化的？找出变化点最好的办法就是模块或者系统的架构师可以根据经验预测识别出系统的需求热点、发展趋势，指导我们进行重构。但是我想有没有其他办法，统计出我们可能注意不到的潜在变化热点呢？这些函数可能预示着我们的代码质量不佳、频繁出现BUG，或者这块代码需求经常变更，面临剧烈的修改冲击。这样的代码，我们要把它找出来，主动思考进行合理的架构设计来抵御需求变化或者BUG产生。&lt;/p&gt;
+&lt;h2&gt;关键技术&lt;/h2&gt;
+&lt;p&gt;要实现上面的功能，我们要摸底下面的几个关键信息能不能搞定：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;代码修改记录，有了修改记录才能统计热点。&lt;/li&gt;
+&lt;li&gt;代码修改记录筛选，我们只需要精确到函数级别，精确到某一行代码是否频繁修改没有意义，一般修改不会只改一行。&lt;/li&gt;
+&lt;li&gt;自动化统计手段，依靠人工统计是不现实的。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;上面的三个问题，提前尝试了一下解决方法如下：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;代码记录自然想到从git获取，git一般查询git log命令获取修改记录，尝试了一下如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ git log
+commit cc2d54ff9fa0b4e958d4a46dacc1106abac9432e (HEAD -&amp;gt; master, origin/master)
+Merge: 31b6533ba f94ffe28e
+Author: Bernard Xiong &amp;lt;bernard.xiong@gmail.com&amp;gt;
+Date:   Thu Jun 27 15:47:17 2019 +0800
+
+    Merge pull request #2781 from jinsheng20/Timer
+
+    增加基础定时器驱动
+
+commit 31b6533baa1d52f070ce43fecaf0183af9ef7299
+Merge: ef6a4aee9 7d0907185
+Author: Bernard Xiong &amp;lt;bernard.xiong@gmail.com&amp;gt;
+Date:   Thu Jun 27 13:49:16 2019 +0800
+
+    Merge pull request #2811 from enkiller/nfs
+
+    [components][dfs][nfs] 修复连接 Linux NFS服务器认证错误的问题
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;可以看到，git log可以看到提交的修改记录，每个修改记录都有一个独一无二的commit id。但是不幸的是，我们并不能从这里面看出具体修改了什么，没关系，使用git show即可，git show commit_id filename还可以指定特定文件。&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ git show 7d0907185837152b918bd4a4b749d453171f6a9f
+commit 7d0907185837152b918bd4a4b749d453171f6a9f
+Author: tangyuxin &amp;lt;462747508@qq.com&amp;gt;
+Date:   Wed Jun 26 11:33:41 2019 +0800
+
+    [components][dfs][nfs] ÐÞ¸´Linux NFS·þÎñÆ÷ÈÏÖ¤ÎÊÌâ
+
+diff --git a/components/dfs/filesystems/nfs/SConscript b/components/dfs/filesystems/nfs/SConscript
+ems/nfs/SConscript
+index 8f1e6defc..f830dfc75 100644
+--- a/components/dfs/filesystems/nfs/SConscript
++++ b/components/dfs/filesystems/nfs/SConscript
+@@ -6,6 +6,8 @@ cwd = GetCurrentDir()
+src = Glob(&apos;*.c&apos;) + Glob(&apos;rpc/*.c&apos;)
+CPPPATH = [cwd]
+
++SrcRemove(src, [&apos;rpc/auth_none.c&apos;])
++
+group = DefineGroup(&apos;Filesystem&apos;, src, depend = [&apos;RT_USING_DFS&apos;, &apos;RT_USING_DFS_NFS&apos;], CPPPATH = CPPPATH)
+
+Return(&apos;group&apos;)
+diff --git a/components/dfs/filesystems/nfs/dfs_nfs.c b/components/dfs/filesystems/nfs/dfs_nfs.c
+index f36531456..e60f6f98c 100644
+--- a/components/dfs/filesystems/nfs/dfs_nfs.c
++++ b/components/dfs/filesystems/nfs/dfs_nfs.c
+@@ -225,7 +225,7 @@ static nfs_fh3 *get_dir_handle(nfs_filesystem *nfs, const char *name)
+        copy_handle(handle, &amp;amp;nfs-&amp;gt;current_handle);
+    }
+
+-    while ((file = strtok_r(NULL, &quot;/&quot;, &amp;amp;path)) != NULL &amp;amp;&amp;amp; path[0] != 0)
++    while ((file = strtok_r(NULL, &quot;/&quot;, &amp;amp;path)) != NULL &amp;amp;&amp;amp; path &amp;amp;&amp;amp; path[0] != 0)
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;有了记录之后，我们要从中筛选出我们感兴趣的函数名，准确从文本中识别出函数名个人感觉不是一件容易的事情，函数名字的形式和参数都多变，不过仔细观察上面的比较记录，会发现git自己能够识别出函数名，并专门使用@@标示出来了，如下的void SystemClock_Config(void)函数，我们只需要筛选符合@@的行就可以了。例子里给了一个&lt;code&gt;@@.*@@\s((\w+)\s+)+[\*,&amp;amp;]*\s*(\w+)\s*\(&lt;/code&gt;，效果不是特别好，你可以自己根据函数特点修改，修改后可能需要重新改下最后拼接res_str的地方。&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; @@ -160,14 +165,14 @@ void SystemClock_Config(void)
+ RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+ RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
+
+ -  /**Configure LSE Drive Capability
+ +  /** Configure LSE Drive Capability
+ */
+ HAL_PWR_EnableBkUpAccess();
+ -  /**Configure the main internal regulator output voltage
+ +  /** Configure the main internal regulator output voltage
+ */
+ __HAL_RCC_PWR_CLK_ENABLE();
+ __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+ -  /**Initializes the CPU, AHB and APB busses clocks
+ +  /** Initializes the CPU, AHB and APB busses clocks
+ */
+ RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
+ RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;自动化工具方面这种文本处理的肯定使用python是最快的，git可以使用gitpython库，使用pip install gitpython安装即可，避免使用原生git命令行的繁琐。文本筛选肯定使用正则表达式最方便，可以实现我们想要的功能。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2&gt;具体脚本&lt;/h2&gt;
+&lt;pre&gt;&lt;code&gt;# -- coding: utf-8 --
+
+# author: tanxiaoyao
+# date:2019.06.29
+import thread
+
+import git
+import re
+import sys
+import threading
+import time
+
+reload(sys)
+sys.setdefaultencoding(&quot;utf-8&quot;)
+
+# 全局变量定义
+thread_num = 10 # 使用的CPU线程数
+commit_num = 1000 # 需要遍历的commit数量
+repo = git.Repo.init(&quot;D:\\02.Code\\02.Reference\\02.OS\\rt-thread&quot;) # 仓库路径，根据自己的实际填写
+folder_path = &quot;.&quot; # 需要扫描的子文件夹路径
+diff_regex = r&quot;@@.*@@\s((\w+)\s+)+[\*,&amp;amp;]*\s*(\w+)\s*\(&quot; # 修改函数名匹配正则表达式，根据自己的需要修改
+max_modified_filenum = 30 # 允许的单次提交修改的最大文件数，排除分支合并的commit
+
+# 正则匹配
+commit_regex = r&quot;commit\s(\w{40})&quot; # commit匹配正则表达式，当前简单匹配40个hash码
+
+
+# 全局线程互斥变量
+fun_dict= {}
+lock = threading.Lock()
+global final_thread_count
+final_thread_count = 0
+
+
+# 获取正则匹配结果
+def get_regex_match(src_str, regex_str):
+    partten = re.compile(regex_str)
+    match = partten.findall(src_str)
+    return match
+
+# 获取小于特定修改文件数的commit，支持多线程
+def get_commit_lessthan(match, thread_id):
+    fo = open(&quot;fo&quot; + str(thread_id) + &quot;.txt&quot;, &quot;w&quot;)
+    ok_list = []
+    count = 0
+
+    # 筛选修改文件数符合要求的commit
+    for commit in match:
+        filelist_str = repo.git.show(commit, stat=True)
+        name_patt = re.compile(commit_regex)
+        name_match = name_patt.findall(filelist_str)
+        if len(name_match) &amp;lt;= max_modified_filenum:
+            ok_list.append(commit)
+
+    # 获取每个commit的具体修改内容
+    for commit in ok_list:
+        if commit is &quot;&quot;:
+            continue
+        diff_str = get_commit_content(commit,&quot;*&quot;)
+        # 从内容中提取修改的函数
+        change_fun_list = get_change_funcs(diff_str)
+        fo.write(diff_str)
+        count += 1
+
+        lock.acquire()
+        try:
+            # 添加到全局数组
+            add_funlist2dict(change_fun_list)
+            print &quot;Thd&quot; + str(thread_id) + &quot;\t&quot; + commit + &quot;_&quot; + str(count) + &quot;/&quot; + str(len(ok_list))
+        finally:
+            lock.release()
+
+    fo.close()
+    global final_thread_count
+    final_thread_count += 1
+
+# 按指定数量拆分数组
+def chunks(l, n):
+    for i in xrange(0, len(l), n):
+        yield l[i:i+n]
+
+# 获取commit列表
+def get_commit_list():
+    log = repo.git.log(folder_path)
+    all_commit = get_regex_match(log, commit_regex)
+    commit_groups = list(chunks(all_commit, commit_num / thread_num))
+    print commit_groups
+
+    # 开始多个线程扫描修改commit，修改函数名
+    try:
+        for index in range(0, min(thread_num, len(commit_groups))):
+            thread.start_new_thread(get_commit_lessthan, (commit_groups[index], index,) )
+    except:
+        print &quot;start thread fail!&quot;
+
+    return
+
+# 获取COMMIT中文件的修改内容
+def get_commit_content(commit_id, file_name):
+    return repo.git.show(commit_id, file_name)
+
+# 提取差异中的函数
+def get_change_funcs(diff_log):
+    return get_regex_match(diff_log, diff_regex)
+
+
+# 将函数加入全局dict
+def add_funlist2dict(list):
+    for fun in list:
+        if fun_dict.has_key(fun):
+            fun_dict[fun] = fun_dict[fun] + 1
+        else:
+            fun_dict[fun] = 1
+
+
+# dict按照value值排序
+def sort_funcdict(dict):
+    items = dict.items()
+    backitems = [[v[1], v[0]] for v in items]
+    backitems.sort(None, None, True)
+    return [[v[1], v[0]] for v in backitems]
+
+
+if __name__ == &apos;__main__&apos;:
+    # 开始处理
+    get_commit_list()
+    # 等待所有线程处理完毕
+    while(final_thread_count &amp;lt; thread_num):
+        time.sleep(1)
+
+    # 输出结果
+    resfile = open(&quot;result.txt&quot;, &quot;w&quot;)
+    sorted_list = sort_funcdict(fun_dict)
+    for func_name, times in sorted_list:
+        res_str = &quot; times:&quot; + str(times) + &quot;\t&quot; + func_name[1].strip() + &quot; &quot; + func_name[2].strip() + &quot;\n&quot;
+        resfile.write(res_str)
+    resfile.close()
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;运行效果&lt;/h2&gt;
+&lt;p&gt;提示：依赖gitpython库，使用pip install gitpython安装。运行后结果输出在脚本同级目录的result.txt中&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; times:77	void SystemClock_Config
+ times:50	if GetDepend
+ times:36	int main
+ times:19	void MX_GPIO_Init
+ times:18	void stm32_dma_config
+ times:18	typedef void
+ times:18	HAL_StatusTypeDef HAL_RCC_OscConfig
+ times:17	void HAL_MspInit
+ times:16	typedef struct
+ times:14	rt_err_t es32f0x_configure
+ times:14	int rt_hw_spi_bus_init
+ times:13	void rt_schedule
+ times:13	void HAL_UART_MspDeInit
+ times:13	void HAL_SMARTCARD_IRQHandler
+ times:13	rt_err_t drv_control
+ times:12	void uart_isr
+ times:12	HAL_StatusTypeDef SMBUS_Slave_ISR
+ times:11	void phy_monitor_thread_entry
+ times:11	void MX_USART1_UART_Init
+ times:11	def PrepareBuilding
+ times:11	HAL_StatusTypeDef HAL_SPI_TransmitReceive
+ times:10	void HAL_UART_MspInit
+ times:10	void HAL_CAN_IRQHandler
+ times:10	rt_err_t rt_sensor_open
+ times:10	rt_err_t rt1052_pin_irq_enable
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;如果仓库修改记录很多，运行时间会比较长，可以在脚本中限制一下统计次数，运行速度主要消耗在git比较两个commit上。&lt;/p&gt;
+</content:encoded></item><item><title>Fluke45Viewer数据校准工具</title><link>https://liushuideng.com/posts/fluke45viewer-shu-ju-xiao-zhun-gong-ju/</link><guid isPermaLink="true">https://liushuideng.com/posts/fluke45viewer-shu-ju-xiao-zhun-gong-ju/</guid><description>需求背景 Fluke45是一台我之前常用的数字式万用表，平时做东西的过程中经常使用它来帮助我进行数据校准工作。Fluke45精度为四位半，具有两个显示区域，可以</description><pubDate>Fri, 14 Jul 2023 00:00:00 GMT</pubDate><content:encoded>&lt;h2&gt;需求背景&lt;/h2&gt;
+&lt;p&gt;Fluke45是一台我之前常用的数字式万用表，平时做东西的过程中经常使用它来帮助我进行数据校准工作。Fluke45精度为四位半，具有两个显示区域，可以同时进行电压电流的测量。在进行设计的过程中，数据校准往往很花费时间，而且一旦进行硬件电路的改动（尤其是采样部分电路的改动），往往意味着数据需要全盘重新校准，为了节省人力和时间，我开发和设计了一个简单的小工具Fluke45Viewer，协助我们进行校准。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/fluke45_pic.png&quot; alt=&quot;fluke45_pic&quot; /&gt;
+我们校准数据一般进行这样的操作，读取自己做的板子液晶屏上的测量数据，再读取万用表的数据，然后抄到EXCEL里面，如此反复。采集到足够多的数据以后进行直线拟合就行了，但是读取、记录数据的这个过程相当繁琐而且很浪费时间，这往往需要两个人的配合，在紧张的竞赛的比赛现场，这是很“奢侈”的浪费，所以如果能够使用工具解决，这样能少浪费很多时间。&lt;/p&gt;
+&lt;h2&gt;框架设计&lt;/h2&gt;
+&lt;p&gt;本工具设计的原理就是使用程序代替人去进行数据的读取、记录、计算这三个关键动作。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;数据读取&lt;/strong&gt;：单片机方面采用串口对要监视的数据进行读取，万用表后面提供了串口，我们可以从这个地方下手。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;数据记录&lt;/strong&gt;：自己在上位机中实现一个简单的界面存储显示数据。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;数据计算&lt;/strong&gt;：线性拟合，实现一个简单的最小二乘法计算即可。&lt;/p&gt;
+&lt;p&gt;上述三个关键过程的简单流程框图如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/fluke45viewer_flow.png&quot; alt=&quot;fluke45viewer_flow&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;PC和单片机之间有两条路径，一个是直接USB转串口的线连接过去，一个是使用蓝牙模块无线连接。使用无线的目的是我们单片机在控制电力变化这样的板子的时候经常会碰到问题，经常出现主路上的大电压大电流串到单片机上来了，如果直连电脑，可能会烧毁电脑（这是有经验和教训的），所以使用无线方式更安全常见的串口线和蓝牙无线模块如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/adapter.png&quot; alt=&quot;adapter&quot; /&gt;&lt;/p&gt;
+&lt;h2&gt;上位机实现&lt;/h2&gt;
+&lt;p&gt;上位机实现有几个要点：1、怎么把万用表的数据读出来？2、读出来了怎么存储、计算3、如何合适的设计单片机的下位机接口，让用户方便快捷的将要监视的数据发送出来。针对以上几点，我们一点点解决：&lt;/p&gt;
+&lt;h3&gt;万用表读取&lt;/h3&gt;
+&lt;p&gt;Fluke45背后提供了一个串口（很多高级的台表后面都有），我们可以通过这个串口把据读取出来，虽然每种表的读取方法不同，但是本文的思想都是通用的，大家按照实际情况发挥。Fluke官方网站很遗憾，翻了一下没找到相关的文档介绍怎么读取，可能在某个维修文档上面有吧，但是很幸运，我们在网上找到了下面这个东西：&lt;/p&gt;
+&lt;p&gt;http://www.pudn.com/downloads572/sourcecode/windows/csharp/detail2351554.html&lt;/p&gt;
+&lt;p&gt;里面介绍了使用C#读取这个万用表，那我们也可以这样读取。这个工程打开是这样的：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/project_view.png&quot; alt=&quot;project_view&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;Devices抽象了Fluke45的核心功能，VirtualInstrument介绍了怎么去使用读取等操作命令，这些该有的就都有了，我们可以开始我们自己的程序设计了。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/main_frame.png&quot; alt=&quot;main_frame&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;首先用VS的界面工具拖个简单的框架，然后开始写内部的工具。内部主要责任就是两块：读取万用表数据、读取下位机数据。读取万用表数据这里就不讲了，大致思路就是用C#开串口，按照万用表规定好的格式给它发读取指令，万用表就会吐出一个值。具体方法参照本工具的源码和VirtualInstrument的源码（其实这部分基本都是照抄VirtualInstrument），然后读取下位机我们接下来介绍。&lt;/p&gt;
+&lt;h3&gt;单片机数据读取&lt;/h3&gt;
+&lt;p&gt;单片机数据读取的方法怎么读都可以，这里使用串口。串口读取肯定由上位机来发起，我们设计的简单点，假定发送一个C字符是表示上位机要读取数据（为什么是C？那总得是一个值吧，如果C你不喜欢，其他都可以呀。。），然后我们在单片机的代码里设计一个串口中断，收到串口数据数据后判断是不是C，是的话就把监视的数据值通过串口返回出去。以MSP430为例，核心代码如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;/***************接收字符串*************************/
+char *tempStr;
+char buffer[32] = &quot;&quot;;
+void getStringFVT() {
+	//判断上位机发送的请求验证符（为了加快速度及验证简便，仅用一个c字符验证）
+	if (UCA1RXBUF != &apos;c&apos;) {				
+		*tempStr = UCA1RXBUF;
+		tempStr++;
+	} else {
+		sprintf(buffer, &quot;%lf=&amp;gt;\n&quot;, *monitorData);	//double转string
+		printStringFVT(buffer);
+	}
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;串口中断这部分根据你使用的单片机不同自行编写，这个应该都不是问题。然后就是数据监视这一块了，这个东西处于简便快捷考虑，我设计了一个Bind函数，用户只需要调用这个函数指定你要监视那个数据就可以了。所以最简单的方法就是：指针直接指向你要看的内存，核心代码如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;//监视的数据，bind的时候将目标数的指针传过来就可以实现实时跟踪了
+double *monitorData;
+/*****************绑定要监视的数据***************************/
+void bindDataFVT(double *sendData) {
+	monitorData = sendData;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;我们适配的代码里自己声明一个指针，然后用户告诉我这个指针指向谁就OK。以后收到上位机指定，我就把指针指向的值发出去，使用方法如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;int main(void) {
+    WDTCTL = WDTPW | WDTHOLD;	// Stop watchdog timer
+	
+    double testValue = 0.1;
+
+    initFVT();
+    bindDataFVT(&amp;amp;testValue);
+
+    while(1)
+    {
+    	if(testValue &amp;lt; 9999)
+    		testValue += testValue;
+    	else
+    		testValue = 0.1;
+    }
+
+	return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;testValue是我要监视的数据，初始化FVT之后，bind一下它的地址就行。通过这个原理可以看到，这个工具使用的限制就是被监视的数据地址不能发生变化（换言之就是全局变量），当然这里的testValue不是全局变量，可以使用的原因是因为这是main程序，内部死循环永远不会退出，是函数的局部变量，申请在栈内存上，函数不退它不会失效，所以这里没失效，大家平时使用最好绑定到一个函数外的全局变量上。&lt;/p&gt;
+&lt;h2&gt;使用效果及源码下载&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/total_view.png&quot; alt=&quot;total_view&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;目前实现了MSP430和TIVA版本的下位机，其他单片机平台欢迎大家补充：&lt;/p&gt;
+&lt;p&gt;&lt;a href=&quot;https://gitee.com/tanxiaoyao/FLUKE45_VIEWR_RELEASE&quot;&gt;源码下载地址&lt;/a&gt;&lt;/p&gt;
+</content:encoded></item><item><title>数字电路基础(6)——CMOS的动态特性</title><link>https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-6-cmos-de-dong-tai-te-xing/</link><guid isPermaLink="true">https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-6-cmos-de-dong-tai-te-xing/</guid><description>上面的文章介绍完了CMOS门电路的基本构造，但我们分析的时候，给电路的输入信号都是不变的，展示的是门电路在稳定时候的特性，现在我们要把输入信号变成动态变化的信号</description><pubDate>Sun, 11 Jun 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;上面的文章介绍完了CMOS门电路的基本构造，但我们分析的时候，给电路的输入信号都是不变的，展示的是门电路在稳定时候的特性，现在我们要把输入信号变成动态变化的信号，观察CMOS电路在动态变化时候的特性。&lt;/p&gt;
+&lt;p&gt;另外，本小节涉及到模拟的特性，本来是应该拿着实物的逻辑门芯片搭电路用示波器观察波形的，但正如整个博客的介绍里所说，我这里手边没有仪器和物料，好在TI的TINA仿真软件基于SPICE模型做的非常逼真，可以模拟出CMOS传输特性，所以就全程用仿真演示，有条件的同学可以搭电路出来实测观察。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;传输延迟现象&lt;/h1&gt;
+&lt;p&gt;最常见的变化信号就是方波，我们给反相器电路输入一个方波试试。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_cmos_dyamic_output.png&quot; alt=&quot;digit_course_cmos_dyamic_output&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;好像没什么问题对吧，输入是红色的50Hz的方波，然后绿色的输出是输入的反相，这个是符合预期的。但是，我们把信号上升或者下降的边缘放大，如下图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_cmos_dyamic_upper.png&quot; alt=&quot;digit_course_cmos_dyamic_upper&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;可以看到输出并不是像我们想像的那样，随着输入的下落，立马就跃变到高电平，而是像爬坡一样缓慢上升到高电平，可以看到示波器我调的是50us一格，也就是说它花了大概100us爬升上去，这就是电路中存在的传输延迟现象，也就是指输出信号并不能严格跟随输入信号变化的现象。&lt;/p&gt;
+&lt;h2&gt;传输延迟的影响&lt;/h2&gt;
+&lt;p&gt;我们不先急着搞清楚为什么会有这个鬼问题，先看看他有什么影响，如果影响不严重其实也可以暂时不深究他是为什么。下图是引用自教材《数字电路技术基础》的图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_cmos_dyamic_inv_amp.png&quot; alt=&quot;digit_course_cmos_dyamic_inv_amp&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;从上面的图中可以看到，因为传输延迟的存在，导致上下两个CMOS无法严格的一起进行切换，在输入跳变的瞬间产生从VDD到地的通路，电流从上到下流经两个CMOS产生功率消耗，这就是CMOS电路的动态功耗。&lt;/p&gt;
+&lt;p&gt;所以，我们就可以很容易的理解，为什么生活中电脑CPU工作频率越高，发热就越大，CPU超频需要使用液氮冷却就是这么来的。&lt;/p&gt;
+&lt;h2&gt;传输延迟的原因&lt;/h2&gt;
+&lt;p&gt;我们理解到传输延迟会造成动态功耗损耗(后面还会介绍会造成竞争-冒险现象，这里先不提)，那这个问题的根本原因是什么呢？其实就是电路中的电容在作怪。&lt;/p&gt;
+&lt;p&gt;我们还是看上面的一张图，非门的输出画了一个电容，这个电容包含两部分：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;负载的电容，包括后级CMOS电路或者其他容性负载的电容&lt;/li&gt;
+&lt;li&gt;CMOS电路本身的分布电容和杂散电容&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;其中第二项我们知道电容的形成条件非常简单，只需要两个隔得足够近的金属就可以形成，CMOS内部也是通过金属走线的，导线之间就会形成微小的分布电容和杂散电容，所以即使CMOS后面的电路没有电容，内部也会有容性存在。即使第二部分的电容一般非常小，但是在CMOS工作频率越高的时候，上述的影响就越明显。&lt;/p&gt;
+&lt;p&gt;后续大家如果学习自己画PCB，也会碰到这种问题，在高频PCB(一般超过几十兆赫兹就会体现出来了)上一般要非常注意走线，防止分布与杂散电容对电路产生不利影响。&lt;/p&gt;
+&lt;h2&gt;传输延迟影响的避免&lt;/h2&gt;
+&lt;ol&gt;
+&lt;li&gt;减少高频率工作状态&lt;/li&gt;
+&lt;li&gt;使用传输延迟更低的CMOS芯片&lt;/li&gt;
+&lt;li&gt;合理PCB布局，减少负载电容&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;实际使用有些时候不可避免的要使用更高的频率，我们着手更多的是第二点和第三点，比如74HC04芯片传输延迟一般在9ns，而74AHC04只有5ns。合理的PCB布局也是一种很重要的方法，特别是在高频的时候。虽然高频的时候，更多的考虑的是信号完整性的东西，减少杂散电容也是一个考虑之一，有些要求比较高的板子，从两层板切换到4层板也有这个原因。但是由于我自己不擅长硬件，所以这里就不瞎讲了，感兴趣的可以参考其他专业硬件博主的文章。&lt;/p&gt;
+</content:encoded></item><item><title>数字电路基础(5)——CMOS基本电路</title><link>https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-5-cmos-ji-ben-dian-lu/</link><guid isPermaLink="true">https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-5-cmos-ji-ben-dian-lu/</guid><description>上文《数字电路基础——逻辑门电路》介绍了CMOS门电路的发展历史和基本构造，本节来看CMOS基本电路的种类和特点，以及实际芯片的介绍和选型。 CMOS基本电路 </description><pubDate>Sat, 10 Jun 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;上文《数字电路基础——逻辑门电路》介绍了CMOS门电路的发展历史和基本构造，本节来看CMOS基本电路的种类和特点，以及实际芯片的介绍和选型。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;CMOS基本电路&lt;/h1&gt;
+&lt;p&gt;这一部分在教材上，不仅讲了各种门电路是怎么样的，还讲了很复杂的静态、动态工作状态分析，还有各个工作点电压电流的计算等，个人觉得没有必要写在这里。这下面就讲这么一些东西吧：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;与或非以及与非、或非等基本逻辑门电路的CMOS实现&lt;/li&gt;
+&lt;li&gt;以非门为例，介绍逻辑电路中普遍存在的传输延时现象&lt;/li&gt;
+&lt;li&gt;学会使用TINA观察逻辑门电路的动态与静态特性&lt;/li&gt;
+&lt;li&gt;开漏和推挽输出&lt;/li&gt;
+&lt;li&gt;传输门、三态门&lt;/li&gt;
+&lt;li&gt;常见CMOS分立元件实物介绍、特点、选型推荐&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;CMOS逻辑门电路实现&lt;/h2&gt;
+&lt;p&gt;CMOS逻辑门中，非门是最简单的一种，下面就从非门开始介绍，并且描述怎么去观察数字电路的动态和静态传输特性，数字电路需要关注的问题等。后面几种与非门、或非门什么的，只需要给出电路图，大家按照非门的方法自己就会分析他们的各项特性了。&lt;/p&gt;
+&lt;p&gt;一个最简单的CMOS非门(反相器)的电路如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_cmos_inverter.png&quot; alt=&quot;digit_course_cmos_inverter&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;红框内是反相器，示波器中红色的是输入，绿色的是输出，输入输出正好是反过来的。反相器仅仅由一个NMOS和一个PMOS组成，当输入是高电平时，下面的NMOS导通而上面的PMOS不导通，所以输出通过NMOS接地为低电平。当输入为低时，下面的NMOS截止而上面的PMOS导通，输出接到高电平为高。&lt;/p&gt;
+&lt;p&gt;类似的，与非门的电路图如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_cmos_andnot.png&quot; alt=&quot;digit_course_cmos_andnot&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;红框里面的是与非门，看看示波器里面VF1 VF2输入和输出VF3的关系，是不是就是与非。&lt;/p&gt;
+&lt;p&gt;或非门的电路图如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_cmos_ornot.png&quot; alt=&quot;digit_course_cmos_ornot&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;同样，观察示波器输出，可以看出来这是VF1 VF2与VF3是一个或非的关系。&lt;/p&gt;
+&lt;h2&gt;CMOS逻辑门的传输特性&lt;/h2&gt;
+&lt;p&gt;首先解释下传输特性是个啥意思，上面的电路图和示波器的波形图，描述的都是静态场景下的逻辑关系，比如给定一个输入，看这个电路的输出是什么。本来作为嵌入式软件的开发来讲，根据这个关系知道怎么写代码去驱动数字电路就够了。但是我们的电路就像CPU里面一样，是在不停运算不停变化的，在输入的信号极快速变化的时候，会因为CMOS的传输特性出现我们意料之外的情况导致电路无法正常工作。所以我个人认为还有有必要描述下这一章，帮助大家深入理解我们代码中配置超高的CPU频率，对电路来说意味着什么。&lt;/p&gt;
+&lt;p&gt;那么，我们就开始《数字电路基础(6)——CMOS的动态特性》，告诉你什么是动态特性，怎么观察动态特性。&lt;/p&gt;
+</content:encoded></item><item><title>数字电路基础(4)——逻辑门电路</title><link>https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-4-luo-ji-men-dian-lu/</link><guid isPermaLink="true">https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-4-luo-ji-men-dian-lu/</guid><description>这一节，我们真正将书本上抽象的东西转换到实际看得见摸得着的电路上，这里我们开始接触半导体电路，为了和模拟电路区分开，我这里将会故意把握以下分寸，弱化模拟部分，突</description><pubDate>Thu, 08 Jun 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;这一节，我们真正将书本上抽象的东西转换到实际看得见摸得着的电路上，这里我们开始接触半导体电路，为了和模拟电路区分开，我这里将会故意把握以下分寸，弱化模拟部分，突出数字部分，帮助大家理解逻辑门在数字电路中是如何工作，如何组合成复杂逻辑电路的。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;首先我们在之前的文章中，根据现实的例子学会了各种基本的逻辑，并可以把它们组合成更复杂的组合逻辑来描述我们生活中存在的各种复杂的逻辑判断场景，麦兜的鱼丸粗面可以随便买我们都能理的清了。但是我们如果要想用电脑帮我们完成这些事情，就需要先把我们基本的或与非逻辑变成电脑可以识别的电路，这就是我们这里说的门电路。&lt;/p&gt;
+&lt;h1&gt;门电路演进&lt;/h1&gt;
+&lt;p&gt;介绍不同阶段形形色色的电路之前，我们首先约定好电压和逻辑值的对应关系，高电压代表逻辑1为真，低电压代表逻辑0为假。我们先不论反逻辑（高电压假低电压真）的情况以及具体多大电压算高，暂且认为有电压就是1就好了，具体的细节，我们后面会慢慢介绍到。&lt;/p&gt;
+&lt;h2&gt;开关门电路&lt;/h2&gt;
+&lt;p&gt;初中物理学习电路时，我们学到的最简单的元件就是开关、导线、电阻等，利用这几个元件，我们就可以组成最简单的门电路，如下图是一个最简单的非门：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_sw_res_gate.png&quot; alt=&quot;digit_course_sw_res_gate&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;输入为高电压控制开关开时，输出被接地拉低，否则为高。那是不是我们的非门就是这样的结构呢？并不是的，这个电路有个缺点是导通的时候，所有的电压均加在电阻R1上，会有$P=\frac{v^2}{R}$的功率耗费掉，虽然一个不多，但是上亿规模之后还是很大的消耗，所以我们可以将它改造成下面这样：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_sw_sw_gate.png&quot; alt=&quot;digit_course_sw_sw_gate&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这样两个开关是互补的，一个开的时候一个关，这样既可以实现逻辑又可以保证任何时候，电源和地都不会导通，理论上没有功率消耗。那现实世界中有没有这种电路呢？当然是有的，你用两个开关不就可以搭建出来吗？但是这里存在两个问题：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;一个是体积，两个开关在这，无论你用什么材质，体积肯定小不了，要弄成千上万个集成在一起是不可能了；&lt;/li&gt;
+&lt;li&gt;另一个是速度，这样两个开关，你用人工或者机械去控制，都不可能很快，要想达到我们电脑那样每秒钟上GHz的频率，显然也是不可能的。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;那我们现在是怎么做到大规模的门电路的呢？那就是下面的半导体电路。&lt;/p&gt;
+&lt;h2&gt;半导体二极管门电路&lt;/h2&gt;
+&lt;p&gt;首先介绍下什么是半导体，由于是数字电路部分，所以这里我尽量少讲模拟量部分，各个关键点尽量做到知其有即可。&lt;/p&gt;
+&lt;h3&gt;半导体&lt;/h3&gt;
+&lt;p&gt;初中物理学过生活中有导体、绝缘体、半导体三种材料，然后老师们简单的说明分类的原因是导体的电子是自由的，所以加电后可以运动形成电流，而绝缘体内部的电子是不自由的，加电也不运动，所以不能形成电流导电；半导体则是介于他们两个中间，电子不那么自由，加电后只能形成极微小的电流。&lt;/p&gt;
+&lt;p&gt;参考链接：&lt;a href=&quot;https://baike.baidu.com/item/%E5%8D%8A%E5%AF%BC%E4%BD%93&quot;&gt;半导体&lt;/a&gt;&lt;/p&gt;
+&lt;h3&gt;N型半导体和P型半导体&lt;/h3&gt;
+&lt;p&gt;初中部分只介绍到这里，到了高中，化学课的时候，我们会学习到原子结构那一章，最常见的半导体材料是硅（锗运用远小于硅），但是纯净的硅电子太不活跃了，加电只有微乎其微的一点点电流，没办法去用。但是扛不住会折腾的人各种实验，有人发明了掺杂技术，即把硅里面用加热、扩散等高端技术，掺进去一些其他的材料，例如磷，磷原子的最外层比硅原子多一个电子，掺的越多，自由电子就越多，这样就形成了内部以电子居多的N型半导体；反过来，有人往里面掺硼，硼恰好比硅少一个，虽说电子越掺越少，但这样电子空出来的空位置（空穴）越来越多，剩余的电子可以在空穴上更好的移动，也会形成电流，这样就形成了N型半导体。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_np_inside.png&quot; alt=&quot;digit_course_np_inside&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;参考链接：
+&lt;a href=&quot;https://baike.baidu.com/item/N%E5%9E%8B%E5%8D%8A%E5%AF%BC%E4%BD%93&quot;&gt;N型半导体&lt;/a&gt;
+&lt;a href=&quot;https://baike.baidu.com/item/P%E5%9E%8B%E5%8D%8A%E5%AF%BC%E4%BD%93&quot;&gt;P型半导体&lt;/a&gt;&lt;/p&gt;
+&lt;h3&gt;半导体二极管&lt;/h3&gt;
+&lt;p&gt;折腾是无止境的，发现了N型半导体和P型半导体后，又有人把这两个半导体“接在一起”（实际肯定不是接上去的，是在一块硅上一边掺磷一边掺硼实现的），结果发现了一个神奇的事情，这样形成的半导体，在加电压的时候，正着加电流很大，反着加电流很小，也就是说接近理想的单向导通特性了。下面是我们很常见的二极管型号1N4148的电压电流特性仿真图（仿真图基于spice模型模拟的，和实际的电流图是有差别的哦，有条件的建议搭电路测量）&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_1n4148_dc.png&quot; alt=&quot;digit_course_1n4148_dc&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;(使用的软件是TINA-TI，在TI的官网可以&lt;a href=&quot;http://www.ti.com.cn/tool/cn/tina-ti&quot;&gt;下载&lt;/a&gt;)&lt;/p&gt;
+&lt;p&gt;这个把大家高兴坏了，因为在此之前从来没有哪个材料拥有这个特性，那这个特性有什么用，怎么把它利用起来呢？还记得之前的开关电路吗？我们那个搞不定的原因就是开关搞不定，那这里你看有个单向导通，正着就通，反着就不通，不正好就像一个开关吗？不过上面的非门不是特别好实现，我们先看下面这个用二极管实现的与门：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_dio_and.png&quot; alt=&quot;digit_course_dio_and&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;可以看到，这里的二极管就跟开关一样，当INPUT任何一个为0时，正向导通，等同于开关闭合，OUTPUT被短接到地，输出为0；当INPUT必须同时为高时，二极管不导通，OUTPUT和电阻另外一端电源保持一样的高电平，输出为高。这个逻辑就是典型的与逻辑&lt;/p&gt;
+&lt;p&gt;OUTPUT = INPUTA &amp;amp;&amp;amp; INPUTB.&lt;/p&gt;
+&lt;p&gt;这里实现的与门相对于开关做的有什么好处呢？首先二极管可以做的很小，解决了体积的问题，二是二极管是使用电控制的，不是用手拨动的，解决了需要人控制的难题，最后就是二极管开关可以很快，解决了速度的问题。例如上面的与门在TINA中仿真，输入信号频率达到1MHz的时候，输出依然可以正常的跟随。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_1n4148_osc.png&quot; alt=&quot;digit_course_1n4148_osc&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;同样的，我们前面学过逻辑运算的基本定律，逻辑公式取反就是把所有的元素都取他们的反，所以与门的对面或门就是图中的二极管方向反过来，然后接电源上拉变成接地下拉即可，如下图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_dio_or.png&quot; alt=&quot;digit_course_dio_or&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这个时候就是OUTPUT = INPUTA || INPUTB.&lt;/p&gt;
+&lt;p&gt;这个时候大家思考一个问题，为什么没有非门？怎么用二极管实现非门？&lt;/p&gt;
+&lt;p&gt;其实如果用二极管实现非门，需要搭配三极管才容易实现，后面我们会画出这个很复杂的图，远没有这两个这么简单，不过它后面也被更容易实现性能更好的CMOS非门电路替代了，大家只需要理解我们从开关进化到半导体的三大好处就行了。&lt;/p&gt;
+&lt;h2&gt;CMOS半导体门电路&lt;/h2&gt;
+&lt;p&gt;在说CMOS电路之前先了解一下为什么不用我们上面的二极管电路而要新发明一种CMOS电路呢?上面的二极管不是都有三个很大的优点了吗?&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_dio_open_gate.png&quot; alt=&quot;digit_course_dio_open_gate&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;仔细观察上面的二极管电压电流关系图,测量下它的正向开始有电压的点就会发现,要超过0.7V左右才开始导通,这就是半导体电路的第一个问题&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1、存在正向导通压降,导致高电平的电压在串联的时候逐级下降,最终降到无法使用的程度&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;其次，半导体二极管的带负载能力不好，当输出接的负载电阻变化时，输出电压可能被拉低，所以做出来的器件不适合直接驱动负载。（这一点我没有实际试验验证过，有兴趣的可以搜索相关资料，我暂时没有这方面的经验），所以第二点就是：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2、不适合驱动负载，带负载能力差&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;基于上面的两个缺点，我们发明了CMOS电路。&lt;/p&gt;
+&lt;h3&gt;CMOS管常识&lt;/h3&gt;
+&lt;p&gt;这一小节又要介绍器件工艺了，先说为什么叫CMOS，CMOS全称（Complementary Metal-Oxide-Semiconductor）互补式金属氧化物半导体。先不管互不互补，先看看MOS是啥，通常我们有些人说的MOS管或者MOS FET都是跟二极管一样，是结构如下图（来源于维基百科）的一种东西：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_cmos_struct.png&quot; alt=&quot;digit_course_cmos_struct&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;看到没，这个结构就比二极管复杂多了，不是搞个N型掺杂P型掺杂就能搞定的，这个里面的工艺如果比较细的介绍就涉及半导体集成电路的工艺了，我到底是搞嵌入式软件的，不专业而且也不是我的初衷，反正就是一块掺杂成的P型衬底（注意是P型衬底而不是纯硅，只不过掺杂浓度较低）上面左右各找一块地方掺杂成高浓度的N型半导体，由于掺杂出来就像一条沟一样，所以俗称沟道，N型的就叫N沟道。&lt;/p&gt;
+&lt;p&gt;然后我们就有了两条“水沟”，这两条水沟里，流动的都是我们掺杂出来大量的自由电子。然后我们在沟的中间铺上一层绝缘的二氧化硅(类似沟中间的地上铺一块木板)，然后二氧化硅上面我们铺一个电极(GATE),衬底的下面还有一个电极，不过这个电极一般和源极(SOURCE)连接在一起，如下面图所示：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_mos_basic_circuit.png&quot; alt=&quot;digit_course_mos_basic_circuit&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;我们想象一下，如果把SOURCE和衬底连接到地，中间的栅极(GATE)连接到正极，那中间的基底内部就会形成从上到下的电场，而电子是带负电的，会逆着电场向上跑，这就像有人踩在沟中间的木板上对着下面的土释放吸星大法，这样就会把地里的水全部吸到木板下面。如果功力足够深厚，会发生什么现象？水会在木板下面越聚越多，这样就会把两个沟的水连接在一起，这个时候，如果有人在漏极(DRAIN)加正电压，就会向往沟里倒水一样，水会很顺畅的从漏极通过中间的水层流到对面的源极，这样就导电了。如果中间的人松开吸星大法，那水就流不过去了，水通不通完全中间的人说了算了。&lt;/p&gt;
+&lt;p&gt;中间的人不仅可以控制通不通，如果他的功夫炉火纯青，甚至可以控制水大水小，像下面的图一样：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_mos_workmode.png&quot; alt=&quot;digit_course_mos_workmode&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;第一个图完全不发力，左右不通；第二幅完全发力，左右畅通；第三点发力控制了下，水只能通很小一点点；最后一幅图则是虽然发力了，但是还是流不过去的。&lt;/p&gt;
+&lt;p&gt;这几种工作模式，在现实生活中有对应的用途，举个例子，完全开和完全关用在最常见的逻辑电路中，本文下面的CMOS非门、与门等，就是用这两种状态的CMOS管代替前面的二极管实现的。中间这种半开半关的状态，最简单的一个应用是电子负载，这个剧透一下，后面有时间专门写下怎么做一个简单的电子负载。&lt;/p&gt;
+&lt;p&gt;好，有人就对武林上不同功力的人做了统计，不同法力下，这个沟的流水量统计图如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_mos_vdsvsid.png&quot; alt=&quot;digit_course_mos_vdsvsid&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这个图来源于一个真实的IRF540 MOS管的datasheet，比如有人功力尚浅，加在栅极（GATE）和源极(SOURCE)之间的功力VGS只有4V，不管别人怎么倒水都不通；有人强一点，VGS有5V，倒水的话，可以留过10A的电流，你可以理解为每秒10立方米的水，不过为什么再到更多水流量也不往上涨了呢？因为这个人功力弱，下面形成的管子小，最大也就流这么多水了，加大VGS电压也没用。可以看到VGS从4V 5V 6 V一直到10V，功力越强，电压越大，可以留过的电流就越大。不过这个图没有画完整，如果有人作死一只倒水，甚至用水泵往里面加压，即使中间这个人功力很弱只有4V，但只要倒水的人足够用力，就可以把中间的土冲开，击穿中间的基底，左右直接导通，那这个电流的曲线过了击穿电压的点就会直线上升，就像洪水决堤一样。不过这样之后电流一下子太大，会迅速在MOS管内产生高温，烧坏MOS管，管子也就报废了，不是允许范围内的工作状态，datasheet也就没画，并且在表格里规定了倒水的最大VGS只能100V，中间人也最大只能施加正负20V的功力：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_mos_irf540_maxpara.png&quot; alt=&quot;digit_course_mos_irf540_maxpara&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;好了，这样一来，NMOS的原理是不是就完全懂了？嗯？什么是NMOS，上面左右掺的两条水沟不是N型的吗？所以就叫NMOS撒。&lt;/p&gt;
+&lt;p&gt;有NMOS肯定你会想是不是有PMOS，是的，有！在N型基底上掺出高浓度的P型沟道就是PMOS，如下图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_pmos_struc.png&quot; alt=&quot;digit_course_pmos_struc&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;原理类似，两个的区别在于：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;NMOS驱动电压是正电压，PMOS是是负电压，一个吸星大法，一个是龟派气功。&lt;/li&gt;
+&lt;li&gt;NMOS载流子是电子，PMOS载流子是空穴，所以一个要正电压一个要负电压。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;不过除了这两种分类，还有一个地方有点区别。有人做的MOS是上面我门介绍的这种，要栅极加电才会导通，叫做增强型；还有人直接作弊，在中间一开始就挖了水沟，默认就是导通的，要想不通还要加个相反的电压，叫做耗尽型。NMOS和PMOS都是这样，所以一共就有下面这四种类型，找了个图总结如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_mos_type.png&quot; alt=&quot;digit_course_mos_type&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;上面的图是电路符号图，以后你们会海量的见到。前面混进来一个JFET，这个是一种类似三极管的晶体管，这里就不讲了，以后放模拟电路介绍。&lt;/p&gt;
+&lt;p&gt;上面讲的都是虚的，真家伙长什么样子，下面这样！&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_mos_to263.jpg&quot; alt=&quot;digit_course_mos_to263&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这些元件，如果你看看电脑主板，绝对可以发现他们。不过这个是功率元件，一个元件就是一个MOS管，可以经过的电流动辄上百安，芯片制造里面也是mos，那个因为经过的电流很小，就是完成电路的开关逻辑，所以就只有纳米大小，这一个大管子的体积可以做出上亿出来，如下面的电镜显微图所示：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_mos_microscope.png&quot; alt=&quot;digit_course_mos_microscope&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;好，最后回到我们这一小节的标题上来，什么是CMOS？我们介绍了NMOS和PMOS，CMOS的意思就是互补型的MOS，他不是一种PMOS和NMOS外新的类型，而是指同时使用NMOS和PMOS的电路，P和N是互补的，所以叫CMOS。&lt;/p&gt;
+&lt;p&gt;为什么CMOS电路后面能够独领风骚呢？因为它不仅解决了上面的两个问题，还有其他很多优点，总的来说如下：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;解决了二极管导通压降0.7V的问题，MOS导通的时候几乎没有压降&lt;/li&gt;
+&lt;li&gt;栅极控制的电极，和源极和漏极之间隔着二氧化硅的绝缘层，所以不会消耗电流，功耗低。&lt;/li&gt;
+&lt;li&gt;CMOS由于是PMOS和NMOS互补的，所以静态的时候没有电流消耗，只有开关的瞬间会产生漏电，所以CMOS做成的芯片，不工作时的待机电流远小于三极管组成的电路。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;当然，门电路不只CMOS这一种，还有三级管组成的TTL(BJT)电路，甚至将这两种电路结合起来的BiCMOS电路，同时具有两者的优点。不过要讲明白TTL电路，需要弄清楚三极管的模拟特性，什么静态工作点，算电流放大倍数啥的，个人认为把它放在数字电路不合适，这里就不介绍了，简单理解就是TTL在模拟电路设计的时候，在模拟特性、电流驱动能力要优于CMOS电路，那些论坛上HIFI音响发烧友，TTL电路就玩的溜，有兴趣的可以看下他们的帖子，我们这边，关注CMOS就可以了。&lt;/p&gt;
+&lt;p&gt;下一章，《数字电路基础(5)——CMOS基本电路》。&lt;/p&gt;
+</content:encoded></item><item><title>数字电路基础(3)——逻辑运算</title><link>https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-3-luo-ji-yun-suan/</link><guid isPermaLink="true">https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-3-luo-ji-yun-suan/</guid><description>上一节我们教识数了，这一节我们怎么也得来个1+1吧？ 别慌，这一节我们不是给你讲二进制的1b+1b=10b这种东西，这个你上节就能自己悟出来了，这里炒现饭的话就</description><pubDate>Wed, 07 Jun 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;上一节我们教识数了，这一节我们怎么也得来个1+1吧？&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;别慌，这一节我们不是给你讲二进制的1b+1b=10b这种东西，这个你上节就能自己悟出来了，这里炒现饭的话就太无聊了，我这里要说的是如果你是麦兜，你要买粗面，必须还得加鱼丸，老板却告诉你有粗面没有鱼丸，你要不要买的问题。&lt;/p&gt;
+&lt;h1&gt;几种基本逻辑运算&lt;/h1&gt;
+&lt;p&gt;上面麦兜的答案，你是不是一下子就知道买不了，这就是生活中最简单的一种逻辑运算，你肯定还碰到下面这几种场景：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;麦兜买面，必须要粗面和鱼丸&lt;/li&gt;
+&lt;li&gt;麦兜买面，有鱼丸或者粗面都行&lt;/li&gt;
+&lt;li&gt;麦兜买面，就是不能放香菜，鱼不鱼丸，粗不粗面的无所谓了&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;上面这三种场景，对应的就是与运算，A和B必须同时成立才为真，否则为假；或运算，只要A或者B只成立一个即可；非运算，只要A不为真就行。教科书上，喜欢给各种东西用符号来表示并发明一个运算式表示，所以上面的三种运算，书上写的运算是这样的：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_basic_logic_calc.png&quot; alt=&quot;digit_course_basic_logic_calc&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;而我,是一个程序员,C语言中，这三种逻辑运算的写法是这样的：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;Y = A &amp;amp;&amp;amp; B  // 与
+Y = A || B  // 或
+Y = !A      // 非
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;emm，只能说各有各的剧本，各有各的唱法吧。不过作为硬件工程师，还有下面的电路图描述方法，后面我们在单片机的内部框图中，将海量的见到它们：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_basic_logic_gate.png&quot; alt=&quot;digit_course_basic_logic_gate&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;当然，他们仨只是最基本的三种逻辑符号，我们还可以灵活组合他们，就形成了更多更复杂的门电路，例如：与非门、或非门、异或门、同或门&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_basic_more_gate.png&quot; alt=&quot;digit_course_basic_more_gate.png&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;与非门就是与门后面再叠加一个非门，在逻辑上也就是他们俩的叠加，先与然后取反。或非门同理。重点说的是XOR异或门和XNOR同或门。异或是指两个输入相同时，输出为0，两个不一样时，输出为1，所以叫“异”或，同或则恰好相反，相同的是1，不相同的是0，所以英文名中也加了个N，变成XNOR。&lt;/p&gt;
+&lt;h1&gt;几种基本的逻辑公式&lt;/h1&gt;
+&lt;p&gt;教科书上，逻辑公式列了十八种，其中有几个我认为是常识，大家靠猜可以理解出来我就不写了，我写几种写代码或者设计电路时常见的公式如下：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A &amp;amp;&amp;amp; (B || C) = (A &amp;amp;&amp;amp; B) || (A &amp;amp;&amp;amp; C)&lt;/li&gt;
+&lt;li&gt;!(A&amp;amp;&amp;amp;B) = (!A) || (!B)&lt;/li&gt;
+&lt;li&gt;A || B &amp;amp;&amp;amp; C = (A || B) &amp;amp;&amp;amp; (A || C)&lt;/li&gt;
+&lt;li&gt;!(A || B) = (!A) &amp;amp;&amp;amp; (!B)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;利用这些基本公式，可以推出下面的常用公式，这部分公式可以把复杂的式子化简，减少我们代码和电路的设计工作量，是一种化繁为简的好东西：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A || A &amp;amp;&amp;amp; B = A&lt;/li&gt;
+&lt;li&gt;A || !A &amp;amp;&amp;amp; B = A || B&lt;/li&gt;
+&lt;li&gt;A &amp;amp;&amp;amp; B || A &amp;amp;&amp;amp; !B = A&lt;/li&gt;
+&lt;li&gt;A &amp;amp;&amp;amp; (A || B) = A&lt;/li&gt;
+&lt;li&gt;A &amp;amp;&amp;amp; !(A &amp;amp;&amp;amp; B) = A &amp;amp;&amp;amp; !B&lt;/li&gt;
+&lt;li&gt;!A &amp;amp;&amp;amp; !(A &amp;amp;&amp;amp; B) = !A&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些公式，我也不知道如何简洁的描述并记忆它们，理解上，如果将A和B分别换成鱼丸和粗面，也是很容易理解的。更多的时候，我在使用这些东西时，也是靠着自己的常识和理解去化简逻辑算式，好在平时并没有碰到很长的公式去化简。&lt;/p&gt;
+&lt;h1&gt;逻辑运算的几个定理&lt;/h1&gt;
+&lt;ul&gt;
+&lt;li&gt;算式中的A和B，可以用任何东西替换，逻辑都是成立的，可以用C替代，也可以用一个式子例如（C || D &amp;amp;&amp;amp; E）替代。&lt;/li&gt;
+&lt;li&gt;逻辑运算中，将等式左右所有的东西都取反，式子还是成立的。A换!A,B换!B，||换&amp;amp;&amp;amp;，&amp;amp;&amp;amp;换||，例如Y = A &amp;amp;&amp;amp; B可以转换为!Y = !A || !B&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这个例子的理解和记忆，也是靠多写代码，多碰到需要逻辑判断的情况，熟能生巧吧。&lt;/p&gt;
+&lt;h1&gt;逻辑运算式的化简&lt;/h1&gt;
+&lt;p&gt;逻辑运算式有公式法化简、卡诺图法化简、Q-M法化简，这三种我也没办法一下很浅显的弄懂，个人认为最后一种是可以使用代码实现的，化简思路清晰，有步骤可循，需要研究的同学自己参考下相关的资料吧，这里不做赘述。&lt;/p&gt;
+&lt;hr /&gt;
+&lt;p&gt;下一章《数字电路基础(4)——逻辑门电路》，我们由抽象走向具体，开始看看我们这些逻辑在电路上的具体实现载体——门电路，看看实际上看得见摸得着的逻辑门是什么样子的。&lt;/p&gt;
+</content:encoded></item><item><title>数字电路基础(2)——数的进制</title><link>https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-2-shu-de-jin-zhi/</link><guid isPermaLink="true">https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-2-shu-de-jin-zhi/</guid><description>本章描述我们如何从10进制的认知模式变成在2进制、16进制任意切换的模式，顺便介绍下补码等不常用的进制知识。 几种进制介绍 十进制 太简单了，不说了 二进制 有</description><pubDate>Tue, 06 Jun 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;本章描述我们如何从10进制的认知模式变成在2进制、16进制任意切换的模式，顺便介绍下补码等不常用的进制知识。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;几种进制介绍&lt;/h1&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;十进制
+太简单了，不说了&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;二进制
+有人说二进制就是0101这种只有0和1的东西，但是要完全讲清楚还是要做一系列对比的，比如十进制我们从0数到9十个数，再往后就要进位了，从一位数变成两位数10，1是高位，代表1个10，再加上0是十，所以这种十个数进一位，一个高位代表10的叫做十进制，我们平时都太习惯了，所以都没意识到这些东西。同样的道理，二进制就是两个数0、1就要进位，而10的高位1只代表2，加上低位0也只表示二的这种进制，就叫做二进制。我这样讲你懂了吗？0101b表示5。
+为什么要有二进制呢？因为我们技术不行，做出来的硅晶体只能表达出0和1两种状态，如果有一天我们技术牛了，一个元件可以表示出稳定的十六种状态，那我们的电路要换代了，变成十六进制的了-&amp;gt;_-&amp;gt;（事实上，SSD行业正在经历这一变化）&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;十六进制
+我个人喜欢举一反三，那16进制啥意思你能自己推出来不？不会？看看上面一段，0到。。呃9往后怎么表示，10 11吗？这样就变成两位数了，不行，那我们用A B C D表示吧，那就是0到E一共16个数才进位，高位1表示16个的进制。0x11或者11h表示17。
+为什么有十六进制啊？因为我们觉得二进制太长了，写代码也好，写文章也好很不方便，比如二进制11010100010101011101010100011011用十六进制表示才0xD455D51B这么短，神奇不？&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;八进制
+同上，就说下写法是后面带个o，比如11o表示9&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1&gt;进制的转换&lt;/h1&gt;
+&lt;p&gt;进制的转换一般就是十进制转某个进制或者某个进制转十进制，很少非十进制之间互转的。二进制转换的诀窍如下：
+1111  对应的每位1分别代表十进制的 8 4 2 1，记住这四个数字二进制随便转，比如1011 是 8 + 2 + 1 = 11&lt;/p&gt;
+&lt;p&gt;十六进制在转换上没什么诀窍，唯一需要训练熟练的就是随便给出A~E中的一个字母，你能瞬间反应出来它是几：
+A-10 B-11 C-12 D-13 E-14 F-15,至于数字的转换，因为十六进制比较大，我也做不到口算，比如0xfeac是多少，我口算是算不出来的，不过，我有个任何教科书都不会讲的终极大绝招，那就是：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/digit_course_decimal_calc.png&quot; alt=&quot;digit_course_decimal_calc&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;他就是我们windows自带的计算器，在开始菜单输入计算器调出，点击查看-程序员，就可以切换到这个模式，选择左边的进制按钮，输入你要转换的数字，然后点击切到另一个进制，计算器会帮你完成计算，有了它你就可以无往不胜，所向披靡。&lt;/p&gt;
+&lt;p&gt;什么？你说这种不用笔算的是没有灵魂的？快忘了你考试的那一套吧，现在写个代码谁还没有电脑来着。&lt;/p&gt;
+&lt;h1&gt;其他不常用知识&lt;/h1&gt;
+&lt;p&gt;不常用就是说不常用，就是说你不看也可以，用到了临时Google就行，比如：补码、反码、补码运算，它们是为了在设计CPU的时候简化电路的目的设计的，你不涉及这么底层可能永远都遇不到。&lt;/p&gt;
+&lt;p&gt;那补码和反码是什么呢？&lt;/p&gt;
+&lt;p&gt;我都说不常用了你还指望我讲？其实我也不会！&lt;/p&gt;
+&lt;hr /&gt;
+&lt;p&gt;那接下来，我们抓紧进入下一节：《数字电路基础(3)——逻辑运算》，你得知道1+1等于几？&lt;/p&gt;
+</content:encoded></item><item><title>数字电路基础(1)——数字世界介绍</title><link>https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-1-shu-zi-shi-jie-jie-shao/</link><guid isPermaLink="true">https://liushuideng.com/posts/shu-zi-dian-lu-ji-chu-1-shu-zi-shi-jie-jie-shao/</guid><description>本篇是新开章节&quot;数字世界&quot;的开篇介绍，这个大章的博客们主要是介绍数字电路的基础知识。写它们的原因是在介绍单片机的过程中，发现如果假设读者们完全没有了解过数字电路</description><pubDate>Mon, 05 Jun 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;本篇是新开章节&quot;数字世界&quot;的开篇介绍，这个大章的博客们主要是介绍数字电路的基础知识。写它们的原因是在介绍单片机的过程中，发现如果假设读者们完全没有了解过数字电路，有些东西很难只言片语介绍清楚，所以干脆就在这里专门讲一讲。这里的很多东西是按照阎石的《数字电子技术基础》教材介绍的，为了避免枯燥，我尽量按照先展示现象后剖析原理的顺序进行，过程中难免大量精简和未言尽的地方，不懂的大家可以详细参考这本教材。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;学会数字思维，进入数字世界&lt;/h1&gt;
+&lt;p&gt;什么是数字量、什么是数字电路，这一切都要先从自然界的模拟思维转变到数字思维说起。一般书面的说法是自然界存在的连续变化的事物是模拟量，比如我们感知到冷热酸甜，从赤道到南极，我们感受到的不同温度就是连续变化的，不存在从一个量瞬间变化到另一个量的情况，即使你把一块冻的硬邦邦的肉一下子丢进滚烫的岩浆，它的温度也是从零下逐渐变到零上直至开始燃烧，只不过这个过程可以很快而已。&lt;/p&gt;
+&lt;p&gt;和自然界连续变化的模拟量相对的就是我们的数字量，数字量是不是人类文明独创的呢？不是的，自然界也有数字量，比如一头牛、两头牛、三头牛等等，人类只不过创造了头、只、个等量词来描述它们。一头牛变成两头牛是跳变的，不存在1.5头牛（不要跟我杠拿刀劈一半什么的），这种不可连续变化的量就是数字量。&lt;/p&gt;
+&lt;p&gt;对于都会数数的我们来说，理解一只两只这样的数字量来说是不是太简单了，大家都懂，那为什么我们还是会对数字电路里的概念感觉到迷茫呢？那是因为这里面涉及到进制的问题，我们从生下来就开始学数数，先从一数到10，然后再从十数到一百，慢慢学会之后可以数千、万、亿等，我们接触到的，大部分都是10进制的，而电路的世界中，我们大部分是二进制的，要么是0要么是1，这么一长串01组合起来，我们这种不经常打交道的人理解起来就晕圈了。&lt;/p&gt;
+&lt;p&gt;我拿了数字世界作为本章的标题，就是想通过一篇篇的博客让大家培养一种数字思维，理解数字电路的工作模式和原理，而了解并熟悉二进制就是数字逻辑的第一课，不过光会数数可不够，我还要告诉你们门电路、数字电路、大规模集成电路等等，一步一步介绍怎么从会掰指头数数的娃娃变成会做应用题的初中生，至于想变成大学生，还需要学好多好多东西，慢慢来吧，教不教的动我也不知道呢。&lt;/p&gt;
+&lt;hr /&gt;
+&lt;p&gt;那下面，我们就开始我们这个系列博客的第一集：《数字电路基础(2)——数的进制》，首先你得有点“B”数之认识数的进制。&lt;/p&gt;
+</content:encoded></item><item><title>通用数字滤波算法</title><link>https://liushuideng.com/posts/tong-yong-shu-zi-lu-bo-suan-fa/</link><guid isPermaLink="true">https://liushuideng.com/posts/tong-yong-shu-zi-lu-bo-suan-fa/</guid><description>不论你是做数字信号处理还是系统自动控制，只要系统中有模拟数据采集部分，就不可避免的存在噪声干扰的问题。应对噪声，一个方法就是利用硬件搭建模拟的滤波器，在前端采样</description><pubDate>Wed, 31 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;不论你是做数字信号处理还是系统自动控制，只要系统中有模拟数据采集部分，就不可避免的存在噪声干扰的问题。应对噪声，一个方法就是利用硬件搭建模拟的滤波器，在前端采样电路滤除掉噪声；另一个方法，就是利用ADC采样，运行软件滤波算法，滤除掉信号中的噪声。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;特别声明：本文为个人在阅读《匠人笔记》的数字滤波篇后自己总结的输出成果，如果存在侵权，烦请留言告知处理。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;背景知识&lt;/h1&gt;
+&lt;p&gt;软件和硬件滤波两种方法各有优缺点，硬件滤波针对特定信号滤除效果好，能够有效提高系统的信噪比，但是硬件电路复杂，甚至需要引入运放增加物料成本，同时频带调整不够灵活，如果噪声信号频率是变动的通常无能为力。软件滤波则设置灵活，可以方便调整频带，在应对复杂的噪声信号时，甚至可以引入算法自动跟随噪声频率，但是软件滤波也有缺点，需要消耗大量的CPU能力进行运算，而且系统能够处理的信号带宽直接受ADC采样速率和CPU处理速度的限制，无法像硬件滤波器那样轻易设计出高频段的滤波器。&lt;/p&gt;
+&lt;p&gt;本文主要介绍软件滤波，因为在原型DEMO的开发中，为了快速滤除噪声，减少设计硬件滤波器的繁琐，我们直接就是用ADC采样前端信号，然后软件快速滤除噪声开始后续处理，加快我们的研究进度。&lt;/p&gt;
+&lt;h1&gt;软件滤波介绍&lt;/h1&gt;
+&lt;p&gt;软件滤波是利用CPU强大的计算运算功能，通过某种数值运算，达到改变输入信号中所含频率分量的相对比例、或滤除某些频率分量的目的。实验中往往会因为噪声、干扰、温度、环境以及元器件或者设备等诸多因素的影响，造成采集到的数据达不到预期效果，例如采集到的“坏点”数据会对数据的分析以及结果造成不利的影响。这个时候可以采用软件滤波的方法对采集到的数据进行处理，减小抖动偏差，使采集到的数据尽可能的准确。此外除了可使用(有源、无源)滤波器对信号或波形进行平滑处理外，还可以先将波形用A/D采集，然后使用软件滤波，最后通过D/A输出波形，同样可以起到对波形的平滑处理和消除毛刺等效果。
+软件滤波的方法有很多种，下面介绍常用的几种，不同的滤波方法应用的场合和环境也不用，应根据具体情况选择使用。为了直观体现出这几种滤波方法对不同噪声的滤波效果，我们人为生成了几段基本信号的组合，然后在它们的波形上叠加上不同的噪声，测试这些滤波方法在不同信号、不同噪声下的输出结果，实验数据如下图所示：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_ori_data.png&quot; alt=&quot;algo_softfilter_ori_data&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;在这段长度为800点,最大值为65535的测试样本中，组合了以下几种情况：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;起始阶段是一段表达式近似为$\sqrt{x}$的数据，用来模拟大多数系统从0开始启动的采样波形，该段信号受到了约为信号本身1/5强度的随机噪声的干扰，用以测试滤波函数对噪声的过滤程度。&lt;/li&gt;
+&lt;li&gt;第二段是一段长度为200点的方波信号，其上叠加了幅度为信号本身1/10的毛刺噪声，测试函数对直流采样过程中毛刺的过滤效果以及对阶跃信号的响应速度。&lt;/li&gt;
+&lt;li&gt;第三段为一段均匀上升的斜坡信号，但是叠加了几个三角形的噪声信号，用来模拟一些高惯性系统受到脉冲冲击后产生的周期较长的干扰杂波。&lt;/li&gt;
+&lt;li&gt;第四段是一段混有信号本身1/10强度的随机噪声与1/4强度的毛刺噪声，模拟了平时在正弦逆变类题目中常常碰到的系统底噪与周期性开关噪声。&lt;/li&gt;
+&lt;li&gt;最后一段是直流信号上叠加了一个长周期的小幅正弦纹波，同时伴有一定的毛刺，用来模拟DC-DC类题目中常出现的输出伴纹波信号。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;上面列出的组合大致涵盖了电子设计竞赛中电源类常见的几种情况，由于涉及到PID闭环调节，因此精确的采样与滤波对实现高精度的输出控制与快速反馈至关重要。下面我们就分别介绍这些算法的实现过程与应用效果。&lt;/p&gt;
+&lt;h2&gt;限幅滤波&lt;/h2&gt;
+&lt;p&gt;限幅滤波又称为程序判断滤波，根据多次采集到的数据，如果当前采集值与前一次采集的数值相差一般维持在一定的偏差$\Delta{D}$内，则将每次采集到的数据和前一次的数据进行比较，如果他们的差的绝对值小于$\Delta{D}$则本次采集到的数据有效，否则无效舍弃。&lt;/p&gt;
+&lt;h3&gt;示例代码&lt;/h3&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;stdlib.h&amp;gt;
+/*********************限幅滤波***********************
+/*   sampleValue:当前采样值
+/*   return 滤波输出值
+/***************************************************/
+#define AMPLIMIT 8192
+int lastValue = -1;
+unsigned int AmpLimitFilter(unsigned int sampleValue)
+{
+    if(-1 == lastValue)
+        lastValue = sampleValue;
+	//限幅判断
+    if(abs(sampleValue - lastValue) &amp;gt; AMPLIMIT)
+    {
+        return lastValue;
+    }else{
+        lastValue = sampleValue;
+        return sampleValue;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;滤波效果&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_amplimit.png&quot; alt=&quot;algo_softfilter_amplimit&quot; /&gt;&lt;/p&gt;
+&lt;h3&gt;适用分析&lt;/h3&gt;
+&lt;p&gt;限幅滤波程序设计简单、运算速度快、占用RAM少，是一种最简单的基本滤波方法。能够克服偶然因素引入的脉冲干扰，也可以消除波形上的尖峰毛刺，但是不能抑制周期性的干扰，而且其完全削除大幅度的阶跃信号，容易造成控制失调，一般不适用于开关电源这类变化剧烈，需要迅速反馈的场景，适用于水温控制等变化缓慢，安全性高的应用。&lt;/p&gt;
+&lt;h2&gt;中值滤波&lt;/h2&gt;
+&lt;p&gt;将原来的采样间隔$\Delta{T}$进行细分，也就是在原来的采样间隔$\Delta{T}$内采样N次，然后把N次采样值按照大小排序，取中间值为本次采样值。&lt;/p&gt;
+&lt;h3&gt;示例代码&lt;/h3&gt;
+&lt;pre&gt;&lt;code&gt;/*********************中值滤波***********************
+/*   *sampleGet():采样函数指针，返回unsigned int类型
+/*   return 滤波输出值
+/***************************************************/
+#define MID_NUM 5
+unsigned int MidFilter(unsigned int *sampleGet())
+{
+  unsigned char i;
+  unsigned int value_buf[MID_NUM]={0};
+  for (i=0;i &amp;lt; MID_NUM;i++)
+  {
+    value_buf[i] = sampleGet();
+  }
+  unsigned int mid;
+  //冒泡排序
+  for(i=0;i&amp;lt;MID_NUM;i++)
+  {
+	int j;
+    for(j=i+1;j&amp;lt;MID_NUM;j++)
+    {
+      if(value_buf[i]&amp;gt;value_buf[j])
+      {
+        mid=value_buf[i];
+        value_buf[i]=value_buf[j];
+        value_buf[j]=mid;
+      }
+    }
+  }
+  mid=value_buf[MID_NUM/2];
+  return mid;
+} 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;滤波效果&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_midfilter.png&quot; alt=&quot;algo_softfilter_midfilter&quot; /&gt;&lt;/p&gt;
+&lt;h3&gt;适用分析&lt;/h3&gt;
+&lt;p&gt;这种滤波方法能够有效的克服偶然因素引起的波动干扰，特别是对于像温度、液位等变化缓慢的被测参数有良好的滤波效果，但是对于流量、速度或者其他快速变化的信号参数则不适合使用这种方法。中值滤波法的程序设计要稍复杂一些，排序可以使用冒泡法或者选择排序法等，由于引入了排序算法，所以该方法不能处理速度要求很高的信号。其运算处理速度和占用的RAM直接受所选择的数值N决定。&lt;/p&gt;
+&lt;h2&gt;算术平均滤波&lt;/h2&gt;
+&lt;p&gt;该方法也是先将原来设计要求的采样间隔$\Delta{T}$进行细分，在$\Delta{T}$内采样N次，但是对于采集进来的数据不是进行排序，而是进行算术平均，算术平均的结果作为本次采样值。N值的选取比较关键，N值较大者处理信号的平滑度会较高，但是灵敏度降低；相反，N值较小者处理信号的灵敏度提高，但是平滑度降低。&lt;/p&gt;
+&lt;h3&gt;示例代码&lt;/h3&gt;
+&lt;pre&gt;&lt;code&gt;/*********************均值滤波***********************
+/*   *sampleGet():采样函数指针，返回unsigned int类型
+/*   return 滤波输出值
+/***************************************************/
+#define AVG_NUM 5
+unsigned int AvgFilter(unsigned int *sampleGet())
+{
+  unsigned char i;
+  unsigned long int sum=0;
+  for (i=0;i &amp;lt; AVG_NUM;i++)
+  {
+    sum += (unsigned int)sampleGet();
+  }
+  return (sum / AVG_NUM);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;滤波效果&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_avgfilter.png&quot; alt=&quot;algo_softfilter_avgfilter&quot; /&gt;&lt;/p&gt;
+&lt;h3&gt;适用分析&lt;/h3&gt;
+&lt;p&gt;这种滤波方法是适用于对具有随机干扰的信号进行处理，并且被处理的信号必须具有一个平均值，信号在这个平均值上下波动。该方法对于高速信号并不适用。对于毛刺信号，可以看到均值滤波将其分担到了周围的采样点上，不如中值滤波那样能够完全去除。但是对于随机噪声信号，由于其理论均值为0，均值滤波对第一段噪声有良好的滤除效果。该滤波方法运算处理速度和RAM的占用率也受所选择的数值N决定，可以使用时间复杂度较低的排序方法降低运算开销。&lt;/p&gt;
+&lt;h2&gt;递推平均滤波&lt;/h2&gt;
+&lt;p&gt;递推平均滤波又称为滑动平均滤波，是将连续N个采样值设为一个先入先出的队列，队列的长度为N，每次采样得到的新数据加入队尾，并扔掉原队列的队首，然后对队列中的N个数据进行算术平均，获得的结果作为此次采样值。&lt;/p&gt;
+&lt;h3&gt;示例代码&lt;/h3&gt;
+&lt;pre&gt;&lt;code&gt;/*******************递推均值滤波*********************
+/*   sampleQueue[SLIDE_AVG_NUM]:采样队列
+/*   sampleValue:当前采样值
+/*   return 滤波输出值
+/***************************************************/
+#define SLIDE_AVG_NUM 5
+unsigned int sampleQueue[SLIDE_AVG_NUM] = {0};
+unsigned int SlideAvgFilter(unsigned int sampleValue)
+{
+    unsigned int i;
+    unsigned long int sum=0;
+    for(i = 0; i &amp;lt; SLIDE_AVG_NUM - 1; i ++) //刷新队列
+    {
+        sampleQueue[i] = sampleQueue[i + 1];
+    }
+    sampleQueue[i] = sampleValue;
+    for (i=0;i &amp;lt; SLIDE_AVG_NUM;i++) //求和
+    {
+        sum += sampleQueue[i];
+    }
+    return (sum / SLIDE_AVG_NUM);//取平均
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;滤波效果&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_slideavgfilter.png&quot; alt=&quot;algo_softfilter_slideavgfilter&quot; /&gt;&lt;/p&gt;
+&lt;h3&gt;适用分析&lt;/h3&gt;
+&lt;p&gt;上图为滤波长度为5的输出波形，下图为滤波长度为20的输出波形。可以看到长度为20的波形更好但延迟也更大。可见该方法对于周期性干扰有良好的抑制作用，平滑度也很高。但是灵敏度较低，对于偶然出现的脉冲干扰的抑制作用较差，不适用于脉冲干扰比较严重的场合，其运算处理速度和RAM的占用率也直接受N值影响。&lt;/p&gt;
+&lt;p&gt;另外，这种方法还有一个特殊用法：制作成软件陷波器，滤除某个单一频率信号的干扰(如工频干扰)。具体实现方法介绍如下：由于正弦波一个周期内任取N个等分点的幅值和为零，其它周期波形的N等分点的幅值和为常数C，设每次采样值为${X_i}$，采样的平均值为${Y=\frac{1}{N}\sum_{i=0}^{N-1}}{X_i}$。若取$N=\frac{S}{f}$(其中S为每秒的采样次数即采样率；f是要消除的波形的频率，S和N都取整数)，这样最终的结果就是Y－C，对于50Hz的工频干扰，C为零，只要选择合适的N和S就可以直接将其消除，构成一个陷波器。
+对于本测试样例，我们针对最后一段的纹波设计滤波器，由于这里是测试的一组数组，没有采样率概念，但是根据前面的关系换算，设置滤波点数为100点，对最后一段纹波进行了较好的滤除，由于这一段数据较少，加之前面数据的相移影响，读者可自己构造一段足够长的纹波信号验证，效果将更加明显。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_freqcutfilter.png&quot; alt=&quot;algo_softfilter_freqcutfilter&quot; /&gt;&lt;/p&gt;
+&lt;h2&gt;中值平均滤波&lt;/h2&gt;
+&lt;p&gt;中值平均滤波也称为防脉冲干扰平均滤波，相当于中值滤波和算术平均滤波思想的结合。连续采样N个数据，去掉其中的最大值和最小值，求剩下的N－2个数据的算术平均作为一次采样值。&lt;/p&gt;
+&lt;h3&gt;示例代码&lt;/h3&gt;
+&lt;pre&gt;&lt;code&gt;/*******************中值平均滤波*********************
+/*   *sampleGet():采样函数指针，返回unsigned int类型
+/*   return 滤波输出值
+/***************************************************/
+#define MID_AVG_NUM 5
+unsigned int MidAvgFilter(unsigned int *sampleGet())
+{
+  unsigned char i;
+  unsigned int value_buf[MID_AVG_NUM]={0};
+  unsigned int max,min;
+  unsigned long int sum=0;
+  for (i=0;i &amp;lt; MID_AVG_NUM;i++)
+  {
+    value_buf[i] = sampleGet();
+  }
+  max=0;
+  min=0xffffffff;
+  for(i=0;i&amp;lt;MID_AVG_NUM;i++)
+  {
+    sum += value_buf[i];//求和
+    if(value_buf[i]&amp;gt;max)
+    {
+      max=value_buf[i];	//找出最大值
+    }
+    if(value_buf[i]&amp;lt;min)
+    {
+      min=value_buf[i];	//找出最小值
+    }
+  }
+  return (sum-min-max)/(MID_AVG_NUM-2);//去掉最大最小值，取平均
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;滤波效果&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_midavgfilter.png&quot; alt=&quot;algo_softfilter_midavgfilter&quot; /&gt;&lt;/p&gt;
+&lt;h3&gt;适用分析&lt;/h3&gt;
+&lt;p&gt;此法综合了两种滤波法的优点，可以有效抑制、消除脉冲干扰，同时相对于纯中值滤波更加平滑，但由于计算开销加上均值的延迟作用，它也只能用在速度比较慢的场合，不适合高速环境，运算处理速度和RAM占有率由N决定。&lt;/p&gt;
+&lt;h2&gt;递推中值平均滤波&lt;/h2&gt;
+&lt;p&gt;递推中值平均滤波也称为滑动中值平均滤波，与上一种不同的是采用滑动方法对序列采样，不降低系统采样率与采样速度。设定一个长度为N的先进先出队列，同时为了方便排序同时构造一个同样长度为N的已排序数组，每个周期采样一个新的数值，插入采样队列队尾并移除队首的旧值。对这个队列进行插入排序（其他快速排序方法均可），然后去掉用户指定个数的较大值与较小值，取中间剩下值的平均数作为最终结果。&lt;/p&gt;
+&lt;h2&gt;示例代码&lt;/h2&gt;
+&lt;pre&gt;&lt;code&gt;/*******************中值平均滤波*********************
+/*   SLIDE_MID_AVG:数据存储结构体，每路信号对应一个
+/*   *sma：本路信号对应结构体指针
+/*   newValue:本次采样值
+/*   cutNum:排序队列头尾要舍弃的数量
+/*   return 滤波输出值
+/***************************************************/
+#define SLIDE_MID_AVG_NUM 32
+typedef struct SLIDE_MID_AVG{
+	volatile unsigned int sample_queue[SLIDE_MID_AVG_NUM];
+	volatile unsigned int sort_queue[SLIDE_MID_AVG_NUM];
+} SLIDE_MID_AVG;
+
+SLIDE_MID_AVG sma;
+unsigned int SlideMidAvgFilter(SLIDE_MID_AVG *sma,unsigned int newValue,unsigned int cutNum)
+{
+	unsigned int i;
+	unsigned int sum = 0;
+	unsigned int insert_value = newValue;
+	//在排序序列中移除采样序列中最早的值
+	for(i = 0;i &amp;lt; SLIDE_MID_AVG_NUM;i ++)
+	{
+		if(sma-&amp;gt;sort_queue[i] == sma-&amp;gt;sample_queue[0])
+		{
+			unsigned int j;
+			for(j = i;j&amp;lt; SLIDE_MID_AVG_NUM - 1;j ++)
+			{
+				//排序序列向前缩进
+				sma-&amp;gt;sort_queue[j] = sma-&amp;gt;sort_queue[j + 1];
+			}
+			break;
+		}
+	}
+	//在排序序列中插入新的采样值（插入排序加快运算）
+	for(i = 0;i &amp;lt; SLIDE_MID_AVG_NUM - 1;i ++)
+	{
+		if(insert_value &amp;lt; sma-&amp;gt;sort_queue[i])
+		{
+			unsigned int j;
+			for(j = SLIDE_MID_AVG_NUM - 1;j &amp;gt; i;j --)
+			{
+				//排序序列向后缩进
+				sma-&amp;gt;sort_queue[j] = sma-&amp;gt;sort_queue[j - 1]; 
+			}
+			sma-&amp;gt;sort_queue[i] = insert_value;
+			break;
+		}else{
+			if(i == SLIDE_MID_AVG_NUM - 2)
+			{
+				sma-&amp;gt;sort_queue[SLIDE_MID_AVG_NUM - 1] = insert_value;
+			}
+		}
+	}
+	//记录新的值到采样队列末尾
+	for(i = 0;i &amp;lt; SLIDE_MID_AVG_NUM - 1;i ++)
+	{
+		sma-&amp;gt;sample_queue[i] = sma-&amp;gt;sample_queue[i + 1];		//移位刷新
+	}
+	sma-&amp;gt;sample_queue[SLIDE_MID_AVG_NUM - 1] = insert_value;	//采样新值
+	//计算中间数的平均值
+	for(i = cutNum; i &amp;lt; (SLIDE_MID_AVG_NUM - cutNum);i ++)
+	{
+		sum += sma-&amp;gt;sort_queue[i];
+	}
+	return sum / (SLIDE_MID_AVG_NUM - (cutNum &amp;lt;&amp;lt; 1));
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;滤波效果&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/algo_softfilter_slidemidavgfilter.png&quot; alt=&quot;algo_softfilter_slidemidavgfilter&quot; /&gt;&lt;/p&gt;
+&lt;h3&gt;适用分析&lt;/h3&gt;
+&lt;p&gt;上图采用了32点滤波长度，首尾去除8个点，波形平滑，没有突变的噪声与毛刺现象，对各种噪声适应性比较均衡，是我们电子竞赛实际中应用的最多的一种滤波方法。但是细心的读者可以发现，波形向后的延迟很高，差不多与滤波长度相当，这也是此方法的弊端。所以我们经常使用32点或者64点甚至更长的滑动中值平均滤波进行数据校准阶段的信号滤波，在恒压恒流等达到准确的稳态值后换用前面的中值滤波等高灵敏度方法进行PID的整定与调节，获得系统高速的动态响应。&lt;/p&gt;
+&lt;h2&gt;限幅平均滤波&lt;/h2&gt;
+&lt;p&gt;顾名思义，限幅平均滤波就是将限幅滤波和递推平均滤波的思想结合起来，每次采样得到的数据先进行限幅处理，再送入队列进行递推平均滤波处理。
+该法也是结合两种滤波法的优点，有效抑制偶然出现的脉冲干扰、可消除由此而引起的采样偏差，但不适用于高速信号的处理，其运算处理和RAM的占用率直接受N值影响。&lt;/p&gt;
+&lt;h2&gt;一阶滞后滤波&lt;/h2&gt;
+&lt;p&gt;取一个比例常数k(其中0&amp;lt;k&amp;lt;1)，本次输出的结果＝k×本次采样值＋(1－k)×前一次输出值，当前的输出值不仅受当前采样值的影响还受前次的输出值影响，影响的程度由k值决定。
+该滤波方法适用于波动频率较高的场合，对于周期性干扰具有良好的抑制作用且运算量不大。但是该方法会造成相位滞后，滞后程度取决于k值，灵敏度低，并且不能消除频率高于采样频率一半的干扰信号。&lt;/p&gt;
+&lt;h2&gt;加权递推平均滤波&lt;/h2&gt;
+&lt;p&gt;该方法是递推平均滤波的一种改进，在不同时刻采样进来的数据具有不同的权重。通常情况是距离当前时刻越近的采样值的权重越大(特殊情况除外)。赋予刚刚采样得到的数据的权重越大，则灵敏度越高，但是信号的平滑度降低。
+此法适用于有较大纯滞后时间常数的对象和采样周期短的情况。对于变化缓慢、采样周期长的情况，则不能迅速反映系统当前所受干扰的严重程度。该方法占用RAM较多。&lt;/p&gt;
+&lt;h2&gt;消抖滤波&lt;/h2&gt;
+&lt;p&gt;设置一个滤波计数器，将每次采样值与当前的有效值比较，如果采样值等于当前有效值，计数器清零；反之，计数器加一，并确判断滤波计数器是否达到设定的溢出上限。如果计数器溢出，将本次的值替换当前有效值，并清零计数器。
+此法对变化缓慢的被测参数有较好的滤波效果，并可避免系统在临界值附近时显示器上数值的抖动和控制器的反复开关跳动。但此法不适用于快速变化的参数测量控制。&lt;/p&gt;
+&lt;h2&gt;限幅消抖滤波&lt;/h2&gt;
+&lt;p&gt;限幅消抖滤波为限幅滤波和消抖滤波的结合：先进行限幅处理，再进行消抖滤波处理。&lt;/p&gt;
+&lt;p&gt;此方法综合了限幅滤波和消抖滤波的优点，改进了消抖滤波中的一些不足，避免了将干扰值导入系统，但不适用于快速变化的参数。&lt;/p&gt;
+&lt;p&gt;基本的软件滤波方法如上所述，(数字滤波器也属于软件滤波，也有其应用的场合，但是消耗的资源会更大些，)这些软件滤波的方法适用场合不同，要根据不同的环境和被测参数的特征来选择不同的滤波方法，也可以几种方法混合使用，以达到抑制、消除干扰，平滑波形，消除抖动，稳定控制和输出结果的目的。&lt;/p&gt;
+&lt;h1&gt;用法小结&lt;/h1&gt;
+&lt;p&gt;上面对于几种常见的滤波方法进行了详细的分析验证，后面几种滤波方法实际上是前面基本滤波的组合，在此不做赘述，读者可以按照前面的过程自行编写代码验证。本书验证在32位平台下运行，在实际的单片机平台运行时，读者若参照上面示例代码运行，请注意平台的数据字长，防止数据溢出的现象发生。&lt;/p&gt;
+&lt;p&gt;从上述分析过程我们可以大致得出：中值滤波适用于去除信号中的突发毛刺，均值滤波适用于去除信号中的白噪声以及系统底噪等。普通的滤波若使用多个采样点计算出一个最终结果，会通过牺牲采样率来获得较准确的数据结果。递推的数据滤波不会降低数据采样的速率，随着队列长度的增加，输出会越来越平滑。但是信号对阶跃信号的响应会越来越慢，系统的时延会越来越大。所以实际应用中使用者应根据实际信号的类型及噪声的状态选取合适的滤波方法，合适的滤波参数。对于电子设计竞赛的电源部分，建议是在数据校准的过程中使用高精确度的滤波来对电压电流等进行精确校准，然后在PID调节时再换用响应快、灵敏度高的滤波算法，这样往往可以同时获得电源输出高精确度、高反馈调节速度的效果。&lt;/p&gt;
+</content:encoded></item><item><title>OrangePi Zero安装Armbian</title><link>https://liushuideng.com/posts/orangepi-zero-an-zhuang-armbian/</link><guid isPermaLink="true">https://liushuideng.com/posts/orangepi-zero-an-zhuang-armbian/</guid><description>最近又把OrangePi折腾起来了，这次是给它换一个Armbian的系统，记录备忘。 1. Armbian官网下载系统烧写到SD卡，启动后用户名root，密码1</description><pubDate>Sun, 28 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;最近又把OrangePi折腾起来了，这次是给它换一个Armbian的系统，记录备忘。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Armbian官网下载系统烧写到SD卡，启动后用户名root，密码1234，根据提示更改密码，创建用户。&lt;/li&gt;
+&lt;li&gt;更改apt源为国内源&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;deb https://mirrors.tuna.tsinghua.edu.cn/debian/ buster main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ buster main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-updates main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-updates main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-backports main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-backports main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian-security buster/updates main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian-security buster/updates main contrib non-free
+&lt;/code&gt;&lt;/pre&gt;
+&lt;ol&gt;
+&lt;li&gt;修改wifi网络连接，首先备份interface&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;sudo cp /etc/network/interfaces /etc/network/interfaces_bak
+&lt;/code&gt;&lt;/pre&gt;
+&lt;ol&gt;
+&lt;li&gt;修改interfaces文件为以下内容&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;auto lo
+iface lo inet loopback
+
+auto eth0
+allow-hotplug eth0
+iface eth0 inet dhcp
+
+auto wlan0
+allow-hotplug wlan0
+iface wlan0 inet manual
+wpa-roam /etc/wpa_supplicant/wpa_supplicant.conf
+iface default inet dhcp
+&lt;/code&gt;&lt;/pre&gt;
+&lt;ol&gt;
+&lt;li&gt;在/etc/wpa_supplicant/目录下创建wpa_supplicant.conf，&lt;code&gt;sudo vim /etc/wpa_supplicant/wpa_supplicant.conf&lt;/code&gt;，写入如下内容：&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+network={
+ssid=&quot;wifi名称&quot;
+psk=&quot;xxxxxxx&quot;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;其中network这一块，使用&lt;code&gt;wpa_passphrase wifi名称 wifi密码&lt;/code&gt;即可生成。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;重启即可，ssh等其他配置可以使用armbian-config设置。&lt;/li&gt;
+&lt;/ol&gt;
+</content:encoded></item><item><title>OrangePi Zero安装openwrt配FRP内网穿透</title><link>https://liushuideng.com/posts/orangepi-zero-an-zhuang-openwrt-pei-frp-nei-wang-chuan-tou/</link><guid isPermaLink="true">https://liushuideng.com/posts/orangepi-zero-an-zhuang-openwrt-pei-frp-nei-wang-chuan-tou/</guid><description>由于家里的宽带没有公网IP，所以在外面访问自己的电脑就成了问题，虽然有TeamViewer，但是它经常性的断连更新密码，老是各种连不上，所以还是FRP内网穿透方</description><pubDate>Sun, 28 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;由于家里的宽带没有公网IP，所以在外面访问自己的电脑就成了问题，虽然有TeamViewer，但是它经常性的断连更新密码，老是各种连不上，所以还是FRP内网穿透方便，刚好手里有个OrangePi，正好可以利用起来。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;原理介绍&lt;/h1&gt;
+&lt;p&gt;内网穿透就是当你家的宽带没有公网IP的时候，你在外面想连接家里的电脑或者摄像头或者NAS什么的，就没有办法连接。此时一种办法就是和宽带的客服battle，看能不能给你提供一个公网IP。如果失败，另一个招就是使用FRP进行内网穿透。FRP就是需要你有一台具有公网IP的服务器，比如阿里云、腾讯云，然后利用这个VPS当跳板，这样就能利用VPS的公网IP访问到你的内网设备。&lt;/p&gt;
+&lt;h1&gt;材料准备&lt;/h1&gt;
+&lt;ol&gt;
+&lt;li&gt;VPS:从原理上我们知道需要准备一个带有公网IP的VPS，国内的阿里云、腾讯云等最好，国外的VPS也可以但是通常延迟会很大，搭好以后操作比较卡顿体验很差。我自己测试过国外的VPS延迟一般在280~300ms左右，国内的腾讯云在40~50ms左右，你自己可以ping一下他的公网IP试试，实际体验我认为20ms以内最好，最大不超过100ms。实际上，如果你哪个朋友家里有公网IP，利用他家里的电脑也可以作为服务端，不过这个很难满足，暂不讨论。&lt;/li&gt;
+&lt;li&gt;本地客户端：家里的内网需要有个设备作为客户端，和服务端配合完成协议的中转，有些人动手能力比较强，可以把自己的路由器刷成openwrt的系统，用它作为客户端，有人直接运行在自己的windows电脑上作为客户端。我这里就是用的一个OragenPi做的，相信你能看到这个博客大概率是通过OrangePi搜索进来的，我们就只写这种情况，另外你需要准备读卡器，大于1G的TF卡。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h1&gt;操作步骤&lt;/h1&gt;
+&lt;h2&gt;服务端安装&lt;/h2&gt;
+&lt;p&gt;下载FRP服务端，一般大家申请的VPS都是linux系统的，到FRP的&lt;a href=&quot;https://github.com/fatedier/frp/releases&quot;&gt;GITHUB地址&lt;/a&gt;下载最新的版本，linux服务器下载下图中的386或者64版本，视你的系统是32还是64位系统而定，不清楚的统一选择386即可。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/orangepi_frp_download.png&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;解压下载的压缩包，因为做服务端，所以我们只需要里面的frps和frps.ini两个文件，把它上传到你VPS的/usr/local/frp目录中，修改frps.ini文件内容如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;[common]
+bind_port = 17000
+
+dashboard_port = 17500
+dashboard_user = 网页控制台用户名
+dashboard_pwd = 网页控制台密码
+
+
+vhost_http_port = 4000
+vhost_https_port = 4001
+max_pool_count = 50
+
+
+token = xxxxxxxxxxxxxxxxxxx
+
+tcp_mux = true
+
+
+log_file = ./frps.log
+log_level = info
+log_max_days = 3
+
+authentication_timeout = 0
+privilege_mode = true
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;上面的17000是你服务器和客户端通信使用的端口，17500是网页查看服务器状态的时候使用的端口，下面的用户名密码这些都可以根据你自己的喜好配置。token是服务端和客户端通信认证用的，到时候两个必须要填的一样。其他的选项保持不动即可。&lt;/p&gt;
+&lt;h2&gt;开放服务器的防火墙端口&lt;/h2&gt;
+&lt;p&gt;刚才我们配置使用了17000 17500 4000 4001这些端口，我们要在服务器上开放这些端口，否则访问不了，我的是centos系统，操作如下，其他的发行版自己搜索对应的防火墙添加端口命令。&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;# 列出系统当前开放的端口号
+firewall-cmd --list-port
+# 添加端口，其他的端口类似操作即可
+firewall-cmd --zone=public --add-port=17000/tcp --permanent
+# 重启防火墙使规则生效
+firewall-cmd --reload
+# 再次查看对应端口好是否打开
+firewall-cmd --list-port
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;开启服务器&lt;/h2&gt;
+&lt;p&gt;执行下列操作确定FRP服务器&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;cd /usr/local/frp
+chmod +x *
+nohup ./frps -c frps.ini &amp;gt; /dev/null   2&amp;gt;&amp;amp;1  &amp;amp;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;最后一句是通过nohup命令后台运行frp，服务器重启后需要重新执行，嫌麻烦的可以搜索怎么添加到linux的开机启动中，这里不啰嗦了。
+启动完成后，访问你的公网IP：端口号测试服务器是否可以访问，比如： 123.123.123.123:17500，如果配置正常应该如下图：
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/orangepi_frp_server_view.png&quot; alt=&quot;orangepi_frp_server_view&quot; /&gt;&lt;/p&gt;
+&lt;h2&gt;OrangePi安装OpenWRT系统&lt;/h2&gt;
+&lt;p&gt;网上已经有人专门发布基于OrangePi Zero打包的OpenWRT系统了，直接点击&lt;a href=&quot;http://pulpstone.pw/&quot;&gt;pulpstone&lt;/a&gt;网站下载对应的版本。网站有可能改版，需要你自己找下下图所示的链接下载：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/orangepi_openwrt_img.png&quot; alt=&quot;orangepi_openwrt_img&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;下载之后解压，用软件把解压出的img镜像文件烧写到SD卡中，烧写软件我用的是树莓派官方推荐的&lt;a href=&quot;https://downloads.raspberrypi.org/imager/imager.exe&quot;&gt;imager.exe&lt;/a&gt;。&lt;/p&gt;
+&lt;p&gt;安装后启动，默认用户名密码是root,root&lt;/p&gt;
+&lt;h2&gt;OrangePi安装frp客户端&lt;/h2&gt;
+&lt;p&gt;同样从上面的GITHUB地址中下载arm的压缩包，解压后我们只需要frpc和frpc.ini文件，同样上传到OrangePi的/usr/local/frp中，frpc.ini修改如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;[common]
+server_addr = xxx.xxx.xxx.xxx
+server_port = 17000
+log_file = ./frpc.log
+token = xxxxxxxxxxxxxxxxxxx
+login_fail_exit = false
+
+[ssh]
+type = tcp
+local_ip = 192.168.124.8
+local_port = 22
+remote_port = 17522
+
+[mstsc]
+type = tcp
+local_ip = 192.168.124.6
+local_port = 3389
+remote_port = 17589
+use_encryption = true
+use_compression = true
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;修改上面的xxx字样部分为你自己服务器的ip、端口以及token，然后下面的我映射了我自己OrangePi的ssh端口和我windows电脑的远程桌面3389端口，分别映射到远程服务器的17522和17589端口，因此，我们需要到远程VPS的机器上，再把17522和17589端口打开防火墙，操作和上面一样。&lt;/p&gt;
+&lt;h2&gt;启动客户端并设置开启自启&lt;/h2&gt;
+&lt;p&gt;手动启动测试下，命令如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;cd /usr/frpc
+./frpc -c frpc.ini
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;操作完成后，既可以测试内网穿透效果了，比如ssh端口测试如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/orangepi_frp_ssh_view.png&quot; alt=&quot;orangepi_frp_ssh_view&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;远程桌面测试如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/orangepi_frp_mstsc_view.png&quot; alt=&quot;orangepi_frp_mstsc_view&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;测试完成没问题可以通之后，可以登陆frp的网页管理端，在浏览器输入openwrt的IP地址，弹出登陆界面：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/orangepi_frp_web_view.png&quot; alt=&quot;orangepi_frp_web_view&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;输入root密码之后，在系统-启动项里面，填入如下命令：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;cd /usr/frpc
+./frpc -c frpc.ini &amp;amp;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/orangepi_frp_bootscript.png&quot; alt=&quot;orangepi_frp_bootscript&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这样在orangepi断电重启之后，会自动在后台启动frp服务，不用手动起了。&lt;/p&gt;
+&lt;p&gt;OK，到此就可以完成内网穿透了，买了独立域名的还可以配置域名跳转到服务器IP，这样就可以使用域名+端口号访问了，不用记IP。不过我这里个人感觉意义不大没有试，感兴趣的可以自行google试试。&lt;/p&gt;
+</content:encoded></item><item><title>OrangePi Zero编译环境搭建</title><link>https://liushuideng.com/posts/orangepi-zero-bian-yi-huan-jing-da-jian/</link><guid isPermaLink="true">https://liushuideng.com/posts/orangepi-zero-bian-yi-huan-jing-da-jian/</guid><description>PS:别看orange pi zero这块板子便宜，但实际上相关的资料非常少，社区和论坛的讨论也少之又少，所以不推荐完全没有linux基础的新手使用这块板子上手</description><pubDate>Sun, 28 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;PS:别看orange pi zero这块板子便宜，但实际上相关的资料非常少，社区和论坛的讨论也少之又少，所以不推荐完全没有linux基础的新手使用这块板子上手。恰好我手中有一块树莓派3B，下面搭建编译环境光前面6步我就遇到了重重阻力，等利用树莓派上手熟悉之后再更新吧。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;环境准备&lt;/h1&gt;
+&lt;p&gt;编译环境 Ubuntu 16.04 64位&lt;/p&gt;
+&lt;h1&gt;搭建步骤&lt;/h1&gt;
+&lt;ol&gt;
+&lt;li&gt;git下载git@github.com:orangepi-xunlong/OrangePi_Build.git。&lt;/li&gt;
+&lt;li&gt;sudo apt-get install unzip curl，安装所需要的curl和unzip程序。&lt;/li&gt;
+&lt;li&gt;进入OrangePi_Build，运行Build_OrangePi.sh脚本，按照指示下载源码。&lt;/li&gt;
+&lt;li&gt;进入OrangePiH2/scripts目录，修改make_kernel函数的下列两处：&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;make -j ARCH=arm CROSS_COMPILE=${cross_comp}- uImage
+修改为
+make -j 4 ARCH=arm CROSS_COMPILE=${cross_comp}- uImage
+
+make -j ARCH=arm CROSS_COMPILE=${cross_comp}- modules
+修改为
+make -j 4 ARCH=arm CROSS_COMPILE=${cross_comp}- modules
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;添加一个4限制编译最大任务数，可根据CPU核数修改，否则会在编译kernel的时候内存占用率直接占满导致电脑卡死，官方到目前还没有勘误。uboot的编译脚本没有这个问题。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;同样该目录下，修改Prepare_toolchain.sh，将lib32stdc++修改为lib32stdc++6，否则在我的机器上会出现下列错误:&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;The following packages have unmet dependencies:
+lib32stdc++6-4.8-dbg : Conflicts: lib32stdc++6-4.7-dbg but 4.7.4-3ubuntu12 is to be installed
+lib32stdc++6-4.9-dbg : Conflicts: lib32stdc++6-4.7-dbg but 4.7.4-3ubuntu12 is to be installed
+Conflicts: lib32stdc++6-4.8-dbg but 4.8.5-4ubuntu4 is to be installed
+lib32stdc++6-5-dbg : Conflicts: lib32stdc++6-4.7-dbg but 4.7.4-3ubuntu12 is to be installed
+Conflicts: lib32stdc++6-4.8-dbg but 4.8.5-4ubuntu4 is to be installed
+Conflicts: lib32stdc++6-4.9-dbg but 4.9.4-2ubuntu1 is to be installed
+lib32stdc++6-5-dbg-s390x-cross : Conflicts: lib32stdc++6-4.9-dbg-s390x-cross but 4.9.3-13ubuntu2cross1 is to be installed
+lib32stdc++6-6-dbg : Conflicts: lib32stdc++6-4.7-dbg but 4.7.4-3ubuntu12 is to be installed
+Conflicts: lib32stdc++6-4.8-dbg but 4.8.5-4ubuntu4 is to be installed
+Conflicts: lib32stdc++6-4.9-dbg but 4.9.4-2ubuntu1 is to be installed
+Conflicts: lib32stdc++6-5-dbg but 5.4.1-8ubuntu1 is to be installed
+lib32stdc++6-6-dbg-mips64-cross : Conflicts: lib32stdc++6-5-dbg-mips64-cross but 5.4.1-2ubuntu2cross1 is to be installed
+lib32stdc++6-6-dbg-mips64el-cross : Conflicts: lib32stdc++6-5-dbg-mips64el-cross but 5.4.1-2ubuntu2cross1 is to be installed
+lib32stdc++6-6-dbg-ppc64-cross : Conflicts: lib32stdc++6-5-dbg-ppc64-cross but 5.4.1-2ubuntu2cross1 is to be installed
+lib32stdc++6-6-dbg-s390x-cross : Conflicts: lib32stdc++6-4.9-dbg-s390x-cross but 4.9.3-13ubuntu2cross1 is to be installed
+Conflicts: lib32stdc++6-5-dbg-s390x-cross but 5.4.1-8ubuntu1cross1 is to be installed
+lib32stdc++6-6-dbg-sparc64-cross : Conflicts: lib32stdc++6-5-dbg-sparc64-cross but 5.4.1-2ubuntu2cross1 is to be installed
+E: Unable to correct problems, you have held broken packages.
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;是否官方错误不确定，经验所得。这些坑挺容易浪费新手大量时间。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;准备工作完毕，OrangePiH2下执行./build.sh即可编译相关模块。&lt;/li&gt;
+&lt;/ol&gt;
+</content:encoded></item><item><title>荔枝派Nano编译Uboot指南</title><link>https://liushuideng.com/posts/li-zhi-pai-nano-bian-yi-uboot-zhi-nan/</link><guid isPermaLink="true">https://liushuideng.com/posts/li-zhi-pai-nano-bian-yi-uboot-zhi-nan/</guid><description>绝大部分基本操作都是按照官方教程走就可以了，碰到了一部分问题教程没有写的，记录备忘。 1. 系统安装按照教程指定16.04，不过我安装的是ubuntu serv</description><pubDate>Thu, 25 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;绝大部分基本操作都是按照官方教程走就可以了，碰到了一部分问题教程没有写的，记录备忘。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;系统安装按照教程指定16.04，不过我安装的是ubuntu server版本，只安装了基本的包，可能下面部分问题跟这个有关系。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- licheepi_nano_spiflash_defconfig&lt;/code&gt;步骤，报错&lt;code&gt;The program &apos;make&apos; can be found in the following packages:&lt;/code&gt;，可能就是系统包太精简，&lt;code&gt;sudo apt-get install make&lt;/code&gt;即可。&lt;/li&gt;
+&lt;li&gt;报错&lt;code&gt;scripts/kconfig/lxdialog/dialog.h:26:20: fatal error: curses.h: No such file or directory&lt;/code&gt;，解决办法&lt;code&gt;sudo apt-get install libncurses5-dev&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j2&lt;/code&gt;报错&lt;code&gt;/bin/sh: 1: python: not found&lt;/code&gt;，解决办法&lt;code&gt;sudo apt-get install python&lt;/code&gt;，默认安装的是python2.7版本&lt;/li&gt;
+&lt;li&gt;继续报错&lt;code&gt;unable to execute &apos;swig&apos;: No such file or directory&lt;/code&gt;，解决办法&lt;code&gt;sudo apt install swig&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;继续报错&lt;code&gt;scripts/dtc/pylibfdt/libfdt_wrap.c:147:21: fatal error: Python.h: No such file or directory&lt;/code&gt;，解决办法&lt;code&gt;sudo apt-get install python-dev&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;编译烧录工具sunxi-tools的时候，报错&lt;code&gt;fel.c:32:18: fatal error: zlib.h: No such file or directory&lt;/code&gt;，解决办法&lt;code&gt;sudo apt-get install zlib1g-dev&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;继续报错&lt;code&gt;fel_lib.c:26:20: fatal error: libusb.h: No such file or directory&lt;/code&gt;，官方给的&lt;code&gt;sudo apt-get install libusb-1.0-0-dev&lt;/code&gt;不管用，&lt;code&gt;sudo apt-get install build-essential pkg-config&lt;/code&gt;解决&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;OK，解决上述问题后，编译完成&lt;/p&gt;
+</content:encoded></item><item><title>荔枝派Nano内核编译</title><link>https://liushuideng.com/posts/li-zhi-pai-nano-nei-he-bian-yi/</link><guid isPermaLink="true">https://liushuideng.com/posts/li-zhi-pai-nano-nei-he-bian-yi/</guid><description>上文编译好uboot之后，想刷内核和根文件系统进去。其实官方的网盘里面，已经有打包好的系统镜像，包含所有的东西，可以直接烧录进flash或者TF卡，但是都是基于</description><pubDate>Thu, 25 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;上文编译好uboot之后，想刷内核和根文件系统进去。其实官方的网盘里面，已经有打包好的系统镜像，包含所有的东西，可以直接烧录进flash或者TF卡，但是都是基于winbond芯片的，国产的xt25f128b刷进去妥妥的&lt;code&gt;SF: unrecognized JEDEC id bytes: 0b, 40, 18&lt;/code&gt;。所以没办法，只能自己再动手重新编译内核了。(PS：搞的我都想直接买一片w25q128换上了，有点麻烦，希望官方直接涨价或者出两版就行，不然对新手不友好啊)&lt;/p&gt;
+&lt;h1&gt;分区规划表&lt;/h1&gt;
+&lt;p&gt;之前烧录uboot的命令&lt;code&gt;sudo sunxi-fel -p spiflash-write 0 u-boot-sunxi-with-spl.bin&lt;/code&gt;里面，参数0是直接指定从flash的0x00000000地址开始烧录，现在我们要烧内核了，要对16M的flash做个规划了，按照官方教程的规划如下：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;分区序号&lt;/th&gt;
+&lt;th&gt;分区大小&lt;/th&gt;
+&lt;th&gt;分区作用&lt;/th&gt;
+&lt;th&gt;地址空间及分区名&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;mtd0&lt;/td&gt;
+&lt;td&gt;1MB (0x100000)&lt;/td&gt;
+&lt;td&gt;spl+uboot&lt;/td&gt;
+&lt;td&gt;0x0000000-0x0100000 : “uboot”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;mtd1&lt;/td&gt;
+&lt;td&gt;64KB (0x10000)&lt;/td&gt;
+&lt;td&gt;dtb文件&lt;/td&gt;
+&lt;td&gt;0x0100000-0x0110000 : “dtb”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;mtd2&lt;/td&gt;
+&lt;td&gt;4MB (0x400000)&lt;/td&gt;
+&lt;td&gt;linux内核&lt;/td&gt;
+&lt;td&gt;0x0110000-0x0510000 : “kernel”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;mtd3&lt;/td&gt;
+&lt;td&gt;剩余 (0xAF0000)&lt;/td&gt;
+&lt;td&gt;根文件系统&lt;/td&gt;
+&lt;td&gt;0x0510000-0x1000000 : “rootfs”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这个其实就是大致划分了4段而已，我们照着官方教程操作就O了&lt;/p&gt;
+&lt;h1&gt;linux内核编译&lt;/h1&gt;
+&lt;p&gt;官方教程地址:http://nano.lichee.pro/build_sys/kernel.html&lt;/p&gt;
+&lt;p&gt;果然没这么顺利，编译过程中报错&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;scripts/extract-cert.c:21:25: fatal error: openssl/bio.h: No such file or directory&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;因为没安装ssl，&lt;code&gt;sudo apt-get install libssl-dev&lt;/code&gt;安装&lt;/p&gt;
+&lt;p&gt;继续报错&lt;code&gt;/bin/sh: 1: bc: not found&lt;/code&gt;，通过&lt;code&gt;sudo apt install bc&lt;/code&gt;安装&lt;/p&gt;
+&lt;p&gt;编译OK，但是教程最后一句&lt;/p&gt;
+&lt;p&gt;“生成的 zImage 在 arch ‣ arm ‣ boot 目录下；将其放入第一分区。”&lt;/p&gt;
+&lt;p&gt;这个让人摸不着头脑，怎么放？第一分区指的是mtd2？--------其实这个指的是使用TF卡的，spi flash的看这个：http://nano.lichee.pro/build_sys/build_flash.html#id3&lt;/p&gt;
+</content:encoded></item><item><title>荔枝派Nano烧录Uboot指南</title><link>https://liushuideng.com/posts/li-zhi-pai-nano-shao-lu-uboot-zhi-nan/</link><guid isPermaLink="true">https://liushuideng.com/posts/li-zhi-pai-nano-shao-lu-uboot-zhi-nan/</guid><description>荔枝派Uboot编译好之后，下载基本按照教程，但是还是碰到了不少问题官方教程没提到的。 1. 首先教程竟然没说下载要用数据线直接连接下载，并且先要在连接串口线擦</description><pubDate>Thu, 25 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;荔枝派Uboot编译好之后，下载基本按照教程，但是还是碰到了不少问题官方教程没提到的。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;首先教程竟然没说下载要用数据线直接连接下载，并且先要在连接串口线擦除先SPI Flash，我研究了好久才整清楚。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;如果按照教程操作，首先碰到USB连接开发板之后，输入&lt;code&gt;sunxi-fel uboot u-boot-sunxi-with-spl.bin&lt;/code&gt;报错&lt;code&gt;ERROR: Allwinner USB FEL device not found!&lt;/code&gt;，这个时候短接Flash芯片的CS脚(1脚)到GND重新上电启动可以进入FEL模式，或者擦除Flash也行，操作如下：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;串口连接开发板上电，波特率115200，出现如下&lt;code&gt;Hit any key to stop autoboot&lt;/code&gt;时，敲回车终止启动&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/image-20210418124317112.png&quot; alt=&quot;image-20210418124317112&quot; /&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;命令擦除flash&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;sf probe 0
+sf erase 0 0x100000
+reset
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;然后重新插拔下USB线，注意这里有个坑，如果开发板上插了TF卡，一定要先拔下来，否则没有反应。插上后，lsusb命令看到&lt;code&gt;Onda (unverified) V972 tablet in flashing mode&lt;/code&gt;字样说明USB连接没问题。&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;txy@ubuntu:~/nano/u-boot$ lsusb
+Bus 002 Device 002: ID 8087:0020 Intel Corp. Integrated Rate Matching Hub
+Bus 002 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 001 Device 006: ID 17ef:4816 Lenovo Integrated Webcam
+Bus 001 Device 005: ID 0a5c:217f Broadcom Corp. BCM2045B (BDC-2.1)
+Bus 001 Device 027: ID 0925:3881 Lakeview Research Saleae Logic
+Bus 001 Device 036: ID 0451:f432 Texas Instruments, Inc. eZ430 Development Tool
+Bus 001 Device 038: ID 1f3a:efe8 Onda (unverified) V972 tablet in flashing mode
+Bus 001 Device 011: ID 05e3:0610 Genesys Logic, Inc. 4-port hub
+Bus 001 Device 002: ID 8087:0020 Intel Corp. Integrated Rate Matching Hub
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;然后下载工具可以识别即可&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;txy@ubuntu:~/nano/u-boot$ sudo sunxi-fel ver
+AWUSBFEX soc=00001663(F1C100s) 00000001 ver=0001 44 08 scratchpad=00007e00 00000000 00000000
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;OK，烧录完成&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;txy@ubuntu:~/nano/u-boot$ sudo sunxi-fel -p spiflash-write 0 u-boot-sunxi-with-spl.bin
+100% [================================================]  1008 kB,   98.6 kB/s
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;重新插拔USB线启动，结果报错如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;SF: unrecognized JEDEC id bytes: 0b, 40, 18                                     
+*** Warning - spi_flash_probe_bus_cs() failed, using default environment        
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;这个问题再另起一个帖子记录吧&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+</content:encoded></item><item><title>荔枝派Nano适配xt25f128b</title><link>https://liushuideng.com/posts/li-zhi-pai-nano-gua-pei-xt25f128b/</link><guid isPermaLink="true">https://liushuideng.com/posts/li-zhi-pai-nano-gua-pei-xt25f128b/</guid><description>早期购买Nano的人，板子上用的是Winbond的Flash芯片，后来Winbond芯片涨价，后买的板子上换成了国产的xt25f128b，大小规格一样，但是！官</description><pubDate>Thu, 25 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;早期购买Nano的人，板子上用的是Winbond的Flash芯片，后来Winbond芯片涨价，后买的板子上换成了国产的xt25f128b，大小规格一样，但是！官方的教程竟然不提这个事情，所以按照教程一路默认下来的操作启动后就报如下的错误：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;SF: unrecognized JEDEC id bytes: 0b, 40, 18                                     
+*** Warning - spi_flash_probe_bus_cs() failed, using default environment        
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Flash型号不识别，这得改uboot代码的dts设备树文件，经过一通百度操作如下：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;修改驱动文件./drivers/mtd/spi/spi_flash_ids.c&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;{&quot;w25q128fw&quot;,      INFO(0xef6018, 0x0,  64 * 1024,   256, RD_FULL | WR_QPP | SECT_4K) },
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;之后添加一行&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;{&quot;xt25f128b&quot;,      INFO(0x0b4018, 0x0,  64 * 1024,   256, RD_FULL | WR_QPP | SECT_4K) },
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;修改dts设备树文件./arch/arm/dts/suniv-f1c100s-licheepi-nano.dts&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;compatible = &quot;winbond,w25q128&quot;, &quot;jedec,spi-nor&quot;;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;修改为&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;compatible = &quot;winbond,xt25f128b&quot;, &quot;jedec,spi-nor&quot;;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;然后重新编译uboot &lt;code&gt;make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j2&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;重新下载uboot，因为这个时候不能正常识别spi flash，所以之前博客中介绍的命令行擦除flash进入fel模式的方法行不通了，只能通过短接1脚上电的方式进，然后&lt;code&gt;sudo sunxi-fel -p spiflash-write 0 u-boot-sunxi-with-spl.bin&lt;/code&gt;下载uboot&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;重新启动后进入uboot，测试bdinfo命令正常&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;=&amp;gt; bdinfo                                                                       
+arch_number = 0x00000000                                                        
+boot_params = 0x80000100                                                        
+DRAM bank   = 0x00000000                                                        
+-&amp;gt; start    = 0x80000000                                                        
+-&amp;gt; size     = 0x02000000                                                        
+baudrate    = 115200 bps                                                        
+TLB addr    = 0x81FF0000                                                        
+relocaddr   = 0x81F75000                                                        
+reloc off   = 0x00875000                                                        
+irq_sp      = 0x81E6AD50                                                        
+sp start    = 0x81E6AD40                                                        
+Early malloc usage: 118 / 400                                                   
+fdt_blob = 81e6ad68                                                             
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;为什么没有进linux命令行？因为这里我们只烧录了uboot，内核和根文件系统烧了才能进linux，下篇博客继续。&lt;/p&gt;
+</content:encoded></item><item><title>ARM、FPGA、DSP、PCB、PLC工作该怎么选</title><link>https://liushuideng.com/posts/armfpgadsppcbplc-gong-zuo-gai-zen-me-xuan/</link><guid isPermaLink="true">https://liushuideng.com/posts/armfpgadsppcbplc-gong-zuo-gai-zen-me-xuan/</guid><description>每次学弟学妹问这类问题我都会问他们自己的兴趣喜欢什么，清楚自己兴趣爱好甚至理想是一件很难得的事情。抛开个人爱好讨论的话，这里列举的其实是两大类完全不同的方向，建</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;每次学弟学妹问这类问题我都会问他们自己的兴趣喜欢什么，清楚自己兴趣爱好甚至理想是一件很难得的事情。抛开个人爱好讨论的话，这里列举的其实是两大类完全不同的方向，建议大家了解之后再好好选择。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr /&gt;
+&lt;p&gt;第一类是偏软件的ARM，DSP，FPGA，这类实习生在招聘的时候，我们一般归类到嵌入式软件开发或者通用软件开发，因为这三类岗位，以后正式工作的时候，一般都与硬件、电路接触的不多，主要的工作形式还是在电脑上编写对应平台上的软件，一般比较少天天调板子、焊电路。(虽然这三个是嵌入式的软件，但是大厂一般会提供对应芯片的完善的仿真平台，除了单板驱动开发人员其他的还是主要都在软件平台上开发)这三个之间具体来比较的话，个人认为目前流行度：ARM&amp;gt;FPGA&amp;gt;DSP。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;ARM的岗位最多，因为ARM上运行的软件各式各样，像我们开发的软件，其实是网络拓扑算法，可以运行在ARM、PowerPC、X86上，按理说我们和ARM关系不大，但是我们团队依然会比较喜欢懂ARM的开发人员，能够优化算法在特定平台上的性能。各行各业例如互联网、智能家居、医疗等，也有很多ARM相关的岗位，所以ARM最流行是因为ARM的生态好，从业者可以找到更多的岗位，对以后跳槽或者调整发展方向来说也更方便。&lt;/li&gt;
+&lt;li&gt;FPGA方向的话则一般偏向于集成电路设计与数字验证，大家要看看自己在学校学习集成电路设计、数字电路这两门课的时候有没有感觉。从我的了解看，FPGA主要可以干两大类事情，一类是做高速逻辑处理、信号采集等等，这是FPGA架构相对于CPU的天然优势，比如几乎所有的大型通信产品中，都有FPGA的使用，处理什么路由表转发、信号帧格式转换啥的只有FPGA这种搞得定。还有示波器、频谱仪什么的，也都有FPGA的应用。另一类就是在芯片研发领域，做仿真、IP开发、芯片验证等等岗位会需要你会FPGA，我实验室几个同学学FPGA，一个在海思做芯片开发，一个在全志作芯片验证。总的来说，随着Altera和xilinx这两大FPGA厂商分别被Intel和AMD这两个CPU大佬收购，说明业界对FPGA的信心也越来越足。这类工作的主要形式还是在电脑上编写Verilog和VHDL代码，但是从领域上来说跟数字电路比较紧密，没有ARM那么广。&lt;/li&gt;
+&lt;li&gt;DSP的话个人则不太推荐，因为DSP在业界越来越受质疑，DSP的长处是数字信号处理，但是现在ARM的主频越来越高，FPGA也有很多现成的数字信号处理IP核，DSP不可替代的领域也越来越少。另外，除了传统的信号处理算法以外，业界现在算法开发人员，越来越多的向AI、机器学习等领域扎堆，带有AI芯片或者NPU的芯片逐渐成为主流，瑞芯微、全志等芯片厂商，也开始放弃集成DSP，换成集成NPU，现有的DSP，可能主要就是传统大佬德州仪器还在发扬光大了。大家也可以自己观察下，DSP的岗位是不是相对来说最少的。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr /&gt;
+&lt;p&gt;第二类是大家说的PCB和PLC两类，这两类个人认为算纯硬件类，和软件基本没有什么关系，流行度：PCB&amp;gt;PLC.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;PCB的话无非是画原理图和PCB布局两部分，这两个大厂里面甚至是两波人干的，大家一般熟知的是其他帖子提到的PCB layout工程师。这个领域怎么说呢？其实跟硬件一样非常吃经验的，发展好在高速信号、EMC、电路等领域也非常需要经验，也是非常稀缺的人才，但是也需要你积极学习，理论知识扎实。别看你不用去直接接触硬件，但是你需要懂各种硬件知识。虽然大家说集成电路的发展逐渐压缩了PCB的发展空间，但是集成度增高同时信号频率的提高也同时加大了对PCB工程师的要求。选择这个方向，和编码没有关系，大家主要注意和前面那三个区分，以后的发展方向的话，也基本不可能对转到软件领域有太大帮助。&lt;/li&gt;
+&lt;li&gt;PLC基本是工业领域使用的，虽然我自己并没有从事过相关领域的学习和工作，但是从我的理解看从事PLC除非在ABB，西门子，施耐德这些PLC原厂工作，国内基本没什么发展。PLC这领域因为工厂啥的需要极高的可靠性，一般都直接选择国际大厂，它们形成了极高的壁垒。行业不好发展，个人也很难有什么突破，薪资也比较容易有天花板。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;介绍这么多主要是给大家描述下各个方向工作的区别，还是要看你自己的兴趣，你是找实习又不是找工作，允许你有试错的机会，感兴趣的方向不合适可以及时换到别的方向。如果你实在不清楚比较迷茫，可以参考下网上各种帖子的回答。&lt;/p&gt;
+</content:encoded></item><item><title>MSP430按键消抖</title><link>https://liushuideng.com/posts/msp430-an-jian-xiao-dou/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-an-jian-xiao-dou/</guid><description>在介绍呼吸灯的时候，CPU的典型工作方式就是一个死循环，不停的查看是否应该点亮LED。但是，一直忙同一件事情也很无聊，可以停下来干干别的，这就是 中断 的工作方</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;在介绍呼吸灯的时候，CPU的典型工作方式就是一个死循环，不停的查看是否应该点亮LED。但是，一直忙同一件事情也很无聊，可以停下来干干别的，这就是&lt;strong&gt;中断&lt;/strong&gt;的工作方式。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h4&gt;1、效果展示&lt;/h4&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/buttonjitter.gif&quot; alt=&quot;buttonjitter&quot; /&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;上图是一个采用中断方式工作的按键示例，单片机正常工作期间可以处理其他任务，当按下按键时，CPU被打断触发在红绿灯之间切换，然后返回继续处理任务。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h4&gt;2、中断的正经介绍&lt;/h4&gt;
+&lt;p&gt;在我最开始学习中断的时候，印象最深的一个例子就是中断就像一个工作的人，他正在忙碌的处理手里的文件，但是突然桌上的电话响起来了，他不得不停下手头的工作去接电话。接电话的过程中，领导刚好叫他处理一个重要的事情，他只好简短的结束电话以后去忙领导交待的事情。圆满完成后，他回到办公室，找到手里文件夹书签的那一页，继续工作。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;这个例子十分的形象，中断就像是给单片机附于了&lt;strong&gt;更加灵活的工作能力&lt;/strong&gt;，不在是一个死板的工作人员一样按部就班的按照日程表工作，不懂的灵活变通处理紧急任务。&lt;/li&gt;
+&lt;li&gt;这些紧急任务中，有电话这种不紧急、不重要的任务，有关键人员要求的紧急任务，这样的机制在单片机中断中就叫做&lt;strong&gt;中断优先级&lt;/strong&gt;。&lt;/li&gt;
+&lt;li&gt;为了忙完了这乱如麻的突发任务，回过头来还能轻松准确的找到手头看到那一页文件，我们需要夹个书签、做个记号，这就叫做中断里的&lt;strong&gt;保存现场&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;下面我们试试以简单易懂的讲解和例子分别看看怎么把单片机训练成一个熟练工。&lt;/p&gt;
+&lt;h5&gt;2.1、430的中断&lt;/h5&gt;
+&lt;p&gt;前面讲了什么是中断，中断有什么好处，那MSP430这个芯片有哪些中断呢？让我们来看看430中到底有多少人会来骚扰CPU的工作。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;到这里我们要开始看芯片的datasheet了，datasheet就是一款芯片的使用说明书。由于MSP430家族有太多型号了，所以不可能每一款芯片说明书都把所有特性写全。所以430 x2xx系列有一个总的说明书，链接在此：&lt;a href=&quot;http://www.ti.com.cn/cn/lit/ug/zhcu032i/zhcu032i.pdf&quot;&gt;MSP430x2xx 系列
+用户指南
+&lt;/a&gt;。然后具体到每一个芯片，其硬件的指标内如内存大小什么的不尽相同，这些指标就会有一个专门的说明书，链接在此：&lt;a href=&quot;http://www.ti.com.cn/cn/lit/ds/symlink/msp430g2553.pdf&quot;&gt;MSP430G2x53、MSP430G2x13 混合信号微控制器 datasheet (Rev. G)
+&lt;/a&gt;。这些文档，都是在官网找到的，直接搜索具体的芯片型号，然后点击下面的几个地方可以找到，有中文也有英文的，一般来说英文的是最新的文档版本。
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/2553datasheet.png&quot; alt=&quot;2553datasheet&quot; /&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;从2553的datasheet中，第12也官方帮我们整理了430G2553上的中断源表，如下：
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/2553intsource.png&quot; alt=&quot;2553intsource&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;可以看到，芯片连通电源、复位、定时器、比较器、串口、引脚IO等都能够触发中断，本例中的按键，实际上就是利用的P1.3引脚IO中断。表格中还有一项需要我们注意的是是否可屏蔽属性，简单理解就是有些中断，你可以设置为不理它，但是有些中断，人在江湖，身不由己，它要是来了，必须得理它。&lt;/p&gt;
+&lt;h5&gt;2.2、430的中断优先级&lt;/h5&gt;
+&lt;p&gt;上面的表格，看到最优一列的优先级没有，从上到下，优（存）先（在）级（感）依次降低。这个表格完全没有必要记住，我们只需要知道有这么个事情存在，在编写代码的时候，如果涉及到使用了多个中断，注意合理安排各个中断之间的时机不要互相大家就好，这个后面有机会再介绍，现在先忘掉这些吧，记得我讲的书签那个比喻就OK了。&lt;/p&gt;
+&lt;h5&gt;2.3、中断中的现场保护&lt;/h5&gt;
+&lt;p&gt;下图是430的一个典型流程图，在430系列文档里有介绍（2553 datasheet不会写）。是不是看着巨麻烦，不用担心，现在没必要搞懂，等到后面有机会讲门电路和寄存器级的代码，我在细细描述下通用的单片机中断处理的机制。讲讲下面这段话究竟在做啥事情。&lt;strong&gt;现在先忘掉这些吧，记住我讲的那个书签的比喻就OK啦&lt;/strong&gt;。&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;任何当前执行的指令完成。&lt;/li&gt;
+&lt;li&gt;指向下一条指令的PC 被压入堆栈。&lt;/li&gt;
+&lt;li&gt;SR 被压入堆栈。&lt;/li&gt;
+&lt;li&gt;如果在最后一个指令执行期间由多个中断出现，那么具有最高优先级的中断被选中并等待被处理。&lt;/li&gt;
+&lt;li&gt;在单一源标志上，中断请求标志自动复位。对于软件处理，多个源标志保持被设定。&lt;/li&gt;
+&lt;li&gt;SR 被清除。这将终止任何低功耗模式。由于GIE 位被清除，之后的中断被禁用。&lt;/li&gt;
+&lt;li&gt;中断矢量的内容被载入到PC：程序继续在中断处理例程所处的地址上执行。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430intflow.png&quot; alt=&quot;430intflow&quot; /&gt;&lt;/p&gt;
+&lt;h4&gt;3、中断的不正经操作&lt;/h4&gt;
+&lt;p&gt;介绍说了这么多，都快忘记了那个开头的图片，那个是怎么做到的，我们来说说。&lt;/p&gt;
+&lt;h5&gt;3.1、代码展示&lt;/h5&gt;
+&lt;blockquote&gt;
+&lt;p&gt;main.c代码&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;pre&gt;&lt;code&gt;#include &quot;MSP430G2553.h&quot;
+#include &quot;common.h&quot;
+
+int main(void)
+{
+    // Stop watchdog timer to prevent time out reset
+    WDTCTL = WDTPW + WDTHOLD;
+    // P1.0和P1.6设置为输出，点灯用
+    P1DIR |= BIT6 + BIT0;
+    // 启动时6亮
+    P1OUT |= BIT6;
+    // 0灭
+    P1OUT &amp;amp;= ~BIT0;
+    // P1.3作为输入，接收按键的输入电压
+    P1DIR &amp;amp;= ~BIT3;
+    // P1SEL功能选择，0表示IO功能
+    P1SEL &amp;amp;= ~BIT3;
+    // 上拉电阻使能，作用我们后面讲模拟部分再说吧
+    P1REN |= BIT3;
+    // P1.3允许中断，默认是关的，不开不行
+    P1IE |= BIT3;
+    // 中断边沿选择为下降沿，因为上拉电阻存在，按下按键的时候电压从高变成接地的低，所以是下降沿
+    P1IES |= BIT3;
+    // 清零中断标记位，IFG(interrupt flag)，一个字节，8位，分别对应P1.0 ~1.7
+    P1IFG = 0;
+    // 使能全局中断，相当于中断的总开关，所有中断都受这个总开关的限制
+    _EINT();
+    while (1)
+    {
+        // 这里随便干点啥
+    }
+}
+
+#pragma   vector=PORT1_VECTOR
+__interrupt void key_inte(void)
+{
+    // 看下中断标志位，是不是1.3产生的，其他引脚产生的也会进来
+    // 当然这里我们只开了1.3的中断，不会有其他引脚触发进来
+    if (P1IFG &amp;amp; BIT3)
+    {
+        // 延时20毫秒消抖
+        delay_ms(20);
+        // 按照消抖原理，延时结束后，再判断P1.3的输入是否还是0电压
+        if ((P1IN &amp;amp; BIT3) == 0)
+        {
+            // 确实是按键按下，交换两等的亮暗状态
+            P1OUT ^= (BIT6 + BIT0);
+        }
+    }
+
+    // 不管是哪个脚触发的中断，本次全部清除标记，继续等待下一次中断
+    P1IFG = 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;blockquote&gt;
+&lt;p&gt;common.h代码，使用的时候在工程中新建一个common.h文件，并添加到工程中&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;pre&gt;&lt;code&gt;/*
+ * common.h
+ *
+ *  Created on: 2015年6月22日
+ *      Author: xiaoyao
+ */
+
+#ifndef COMMON_H_
+#define COMMON_H_
+
+#include &amp;lt;msp430g2553.h&amp;gt;
+
+/********************延时*******************************/
+#define CPU_F ((double)1000000) //时钟频率0
+#define delay_us(x) __delay_cycles((long)(CPU_F*(double)x/1000000.0))
+#define delay_ms(x) __delay_cycles((long)(CPU_F*(double)x/1000.0))
+
+#endif /* COMMON_H_ */
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h5&gt;3.1、代码解释&lt;/h5&gt;
+&lt;p&gt;1、为什么中断后要等20毫秒再判断？&lt;br /&gt;
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/jitter.png&quot; alt=&quot;jitter&quot; /&gt;&lt;br /&gt;
+如上图所示，机械的按键在按下和弹起时，电压的波动不是理想的立即变低然后变高，而是在变化时伴随着很多抖动和毛刺（有示波器的同学可以看下波形，没有的可以去掉延时这一行然后感受一下效果差异）。这也是本文标题按键消抖的来源。&lt;/p&gt;
+&lt;p&gt;2、common.h里面的是什么？
+个人习惯喜欢在common.h里面封装一些公共的函数和宏定义，这样方便使用，每个工程直接引用就可以了。这里的延时就是。CPU_F是CPU主频率，430默认是1M，所以填1000000，后面如果做其他功能的时候将时钟频率调到16M或者32M或者32768HZ，都记得改一下这里的值，否则延时就不准了。delay_us和delay_ms分别是延时对应的微秒和毫秒。&lt;/p&gt;
+&lt;p&gt;3、上面的代码中，下面这两行的写法，第一行是固定的，这行告诉编译器，下面的函数是给P1引脚准备的，P1中断后，如果中断打开，让CPU直接跳到下面的函数执行。至于第二行函数名是什么，怎么起就随意了，只要前面加上__interrupt就行了。&lt;/p&gt;
+&lt;p&gt;#pragma   vector=PORT1_VECTOR&lt;/p&gt;
+&lt;p&gt;__interrupt void key_inte(void)&lt;/p&gt;
+&lt;p&gt;4、上面有个地方讲现场保护，是不是发现为什么这里都没有？这是因为如果使用C语言而不是汇编，这些东西编译器都可以自动帮我们生成，按照上面第一点说的写法就可以了。&lt;/p&gt;
+&lt;p&gt;5、上面中断判断的代码中，有个坑新手容易踩进去，造成按键怎么按就没反应，就是下面这一行：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;    if ((P1IN &amp;amp; BIT3) == 0)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;这一行很容易有人顺手写成if (P1IN &amp;amp; BIT3 == 0)，这个结果是完全不一样的，因为&amp;amp;的优先级比==低，编译器会先判断BIT3==0，然后再把结果和P1IN与，BIT3是0x00001000，肯定不等于0，这样按键处理的函数怎么都走不到。附C语言运算符优先级表如下，平时写代码有一个诀窍就是&lt;strong&gt;如果记不住优先级，那么就把每一个你不确定的操作都像上面一样加上括号&lt;/strong&gt;，这是万金油操作。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/coperatorpri.jpg&quot; alt=&quot;coperatorpri&quot; /&gt;&lt;/p&gt;
+</content:encoded></item><item><title>MSP430产生PWM波代码</title><link>https://liushuideng.com/posts/msp430-chan-sheng-pwm-bo-dai-ma/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-chan-sheng-pwm-bo-dai-ma/</guid><description>前面有一节讲过《MSP430之定时器》，这篇文章里面给的PWM波代码写的比较简陋，还要算寄存器需要配多少个周期。下面的示例代码不是我自己原创，是艾研给TI官方的</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;前面有一节讲过《MSP430之定时器》，这篇文章里面给的PWM波代码写的比较简陋，还要算寄存器需要配多少个周期。下面的示例代码不是我自己原创，是艾研给TI官方的G2口袋开发套件提供的例程里面摘录出来的，如有侵权，联系删除。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;运行的芯片是G2553，输出管脚为TA0.1 P1.6管脚，如果是其他型号，记得看清楚对应的输出管脚。&lt;/p&gt;
+&lt;p&gt;使用示例程序如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;msp430g2553.h&amp;gt;
+#include &quot;pwm/ta_pwm.h&quot;
+
+int main( void )
+{
+  // Stop watchdog timer to prevent time out reset
+  WDTCTL = WDTPW + WDTHOLD;
+  TA0_PWM_Init(&apos;S&apos;,1,&apos;F&apos;,0);
+  TA0_PWM_SetPeriod(1000);
+  TA0_PWM_SetPermill(1,200);
+  while(1);
+  return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;上述代码使用默认1MHz的SMCLK作为时钟源，不分频，周期为1000个时钟周期，占空比为20%，因此最终出来的是1kHz的20%占空比方波，如下图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/image-20210411214550006.png&quot; alt=&quot;image-20210411214550006&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;程序中使用到的定时器源码如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;/*
+ * ta_pwm.c
+ * 描述：PWM库函数，可利用TA生成三种PWM。
+ *  Created on: 2013-2-9
+ *  Author: Administrator
+ */
+
+#include &quot;msp430g2553.h&quot;
+#define DEADTIME 20							//预设死区时间，以TA的clk为单位
+/*******设定TA输出IO口，目前设定为MSP430G2553，20Pin封装无TA0.2********/
+#define TA01_SET 	P1SEL |= BIT6; P1DIR |= BIT6		//P1.6
+#define TA02_SET 	P3SEL |= BIT0; P3DIR |= BIT0		//P3.0
+#define TA11_SET 	P2SEL |= BIT2; P2DIR |= BIT2		//P2.2
+#define TA12_SET 	P2SEL |= BIT4; P2DIR |= BIT4		//P2.4
+#define TA01_OFF 	P1SEL&amp;amp;= ~BIT6; 						//P1.6
+#define TA02_OFF 	P3SEL &amp;amp;= ~BIT0; 						//P3.0
+#define TA11_OFF 	P2SEL &amp;amp;= ~BIT2; 						//P2.2
+#define TA12_OFF 	P2SEL &amp;amp;= ~BIT4; 						//P2.4
+/******************************************************************************************************
+* 名       称：TA0_PWM_Init()
+* 功       能：TA0定时器作为PWM发生器的初始化设置函数
+* 入口参数：Clk:时钟源 &apos;S&apos;=SMCLK;   &apos;A&apos;=ACLK ;   &apos;E&apos;=TACLK(外部输入)； &apos;e&apos;= TACLK(TACLK取反)
+                    Div:时钟分频系数: 1/2/4/8
+		    Mode1:通道1的输出模式 &apos;F&apos;设为超前PWM（模式7），&apos;B&apos;滞后PWM（模式3） ，&apos;D&apos;带死区增PWM（模式6），0=禁用
+		    Mode2:通道2的输出模式 &apos;F&apos;设为超前PWM（模式7），&apos;B&apos;滞后PWM （模式3），&apos;D&apos;带死区减PWM（模式2），0=禁用
+		    设置输出带死区控制的PWM时，两通道均需使用，且均为死区模式。
+* 出口参数：1表示设置成功，0表示参数错误，设置失败。
+* 说       明 : 在调用PWM相关函数之前，需要调用该函数设置TA的模式和时钟源。
+* 范       例 : TA0_PWM_Init(&apos;A&apos;,1,&apos;F&apos;,&apos;P&apos;)TA时钟设为ACLK,通道1和通道2均为超前PWM输出
+                   TA0_PWM_Init(&apos;S&apos;,4,&apos;D&apos;,&apos;D&apos;)TA时钟设为SMCLK/4, 通道1为死区增PWM、通道2为死区减PWM
+                   TA0_PWM_Init(&apos;A&apos;,1,&apos;F&apos;,0)TA时钟设为ACLK,通道1超前PWM输出，通道2不作TA用。
+ ******************************************************************************************************/
+char TA0_PWM_Init(char Clk,char Div,char Mode1,char Mode2)
+{
+  TA0CTL =0;																		// 清除以前设置
+
+  switch(Mode1)																	//为定时器选择计数模式
+  {
+  case &apos;F&apos;: case &apos;f&apos;:																//普通PWM
+		  TA0CTL |=MC_1; break;											//主定时器为增计数
+  case &apos;B&apos;:case &apos;b&apos;:
+	  	  TA0CTL |=MC_1; break;											//主定时器为增计数
+  case &apos;D&apos;: case &apos;d&apos;:																//死区PWM
+     	  TA0CTL |=MC_3; break;											//主定时器为增减计数
+  default : return(0);															//其他情况都是设置参数有误，返回0
+  }
+
+  switch(Clk)  																		//为定时器TA选择时钟源
+  {
+    case &apos;A&apos;: case &apos;a&apos;:  	TA0CTL|=TASSEL_1; break;   			//ACLK
+    case &apos;S&apos;: case &apos;s&apos;: 	TA0CTL|=TASSEL_2; break;  			//SMCLK
+    case &apos;E&apos;:            		TA0CTL|=TASSEL_0; break;  			//外部输入(TACLK)
+    case &apos;e&apos;:          			TA0CTL|=TASSEL_3; break;   			//外部输入(TACLK取反)
+    default :  return(0);  														//设置参数有误，返回0
+  }
+  switch(Div) 																		//为定时器TA选择分频系数
+  {
+    case 1:   TA0CTL|=ID_0; break;   //1
+    case 2:   TA0CTL|=ID_1; break;   //2
+    case 4:   TA0CTL|=ID_2; break;   //4
+    case 8:   TA0CTL|=ID_3; break;   //8
+    default :  return(0);  														//设置参数有误，返回0
+  }
+  switch(Mode1)										 							//设置PWM通道1的输出模式。
+  {
+     case &apos;F&apos;:	case &apos;f&apos;:
+              TA0CCTL1 = OUTMOD_7;
+              TA01_SET;
+              break;
+     case &apos;B&apos;:	case &apos;b&apos;:
+              TA0CCTL1 = OUTMOD_3;
+              TA01_SET;
+              break;
+     case &apos;D&apos;: case&apos;d&apos;:
+	     TA0CCTL1 = OUTMOD_6;
+    	     TA01_SET;
+    	     break;
+      case &apos;0&apos;:case 0:   															//如果设置为禁用
+             TA01_OFF;   															//TA0.1恢复为普通IO口
+              break;
+     default :  return(0); 							  							//设置参数有误，返回0
+  }
+  switch(Mode2) 																//设置PWM通道2的输出模式。
+  {
+      case &apos;F&apos;:	 case &apos;f&apos;:
+              TA0CCTL2 = OUTMOD_7;
+              TA02_SET;  break;
+       case &apos;B&apos;:	case &apos;b&apos;:
+              TA0CCTL2 = OUTMOD_3;
+              TA02_SET;
+                break;
+       case &apos;D&apos;: case &apos;d&apos;:
+	       	   TA0CCTL2 = OUTMOD_2;
+	       	   TA02_SET;
+	       	   break;
+       case &apos;0&apos;:case 0:   														//如果设置为禁用
+           	 	TA02_OFF;   							 						//TA0.1恢复为普通IO口
+           	 	break;
+       default :  return(0); 												//设置参数有误，返回0
+    }
+  return(1);
+}
+/******************************************************************************************************
+* 名       称：TA0_PWM_SetPeriod()
+* 功       能：设置PWM发生器的周期
+* 入口参数：Channel: TA0=0, TA1=1
+*                     Period:周期(0~65535) 时钟个数
+* 出口参数：1：设置成功     0：设置失败
+* 说       明 : 普通PWM与带死区PWM周期相差一倍
+* 范       例 : TA0_PWM_SetPeriod(500)设置PWM方波周期为500或1000个时钟周期
+ ******************************************************************************************************/
+char TA0_PWM_SetPeriod(unsigned int Period)
+{
+	if (Period&amp;gt;65535)	return(0);
+	 TA0CCR0 = Period;
+	return(1);
+}
+
+/******************************************************************************************************
+* 名    称：TA0_PWM_SetPermill()
+* 功    能：设置PWM输出的占空比(千分比)
+* 入口参数：Channel: 当前设置的通道号  1/2
+            Duty: PWM高电平有效时间的千分比 (0~1000)，
+* 出口参数：1设置成功，0设置失败
+* 说    明: 1000=100.0%  500=50.0% ，依次类推。死区模式时，两channel同时设定。
+* 范    例: TA0_PWM_SetPermill(1,300)设置PWM通道1方波的占空比为30.0%
+               TA0_PWM_SetPermill(2,,825)设置PWM通道2方波的占空比为82.5%
+ ******************************************************************************************************/
+char TA0_PWM_SetPermill(char Channel,unsigned int Duty)
+{
+	unsigned char Mod = 0;
+	unsigned long int Percent=0;							//防止乘法运算时溢出
+	Percent=Duty;
+	switch (Channel)												//先判断出通道的工作模式
+		{
+	case 1:
+		Mod = (TA0CCTL1&amp;amp; 0x00e0)&amp;gt;&amp;gt;5;		break;	//读取输出模式，OUTMOD0位于5-7位
+	case 2:
+		Mod = (TA0CCTL2 &amp;amp; 0x00e0)&amp;gt;&amp;gt;5;	break;	//读取输出模式，OUTMOD1位于5-7位
+	default:	return(0);
+		}
+
+	switch(Mod)														//根据模式设定TACCRx
+		{
+	case 2: case 6:			/**死区模式2,6时，需要判断修正死区时间，且同时设定TA0CCR1/2 的值*/
+		{
+			if((1000-2*Percent)&amp;lt;=DEADTIME)			//预留死区时间
+				Percent=(1000-DEADTIME)/2;
+			TA0CCR1=Percent*TA0CCR0/1000;
+			TA0CCR2= TA0CCR0-TA0CCR1;
+			break;
+		}
+		case 7:
+		{
+			if(Percent&amp;gt;1000)	Percent=1000;
+			if(Channel==1) TA0CCR1=Percent* TA0CCR0/1000;
+			if(Channel==2) TA0CCR2=Percent* TA0CCR0/1000;
+			break;
+		}
+		case 3:		//占空比一律为正脉宽，所以需要 TA0CCR0减去占空比
+		{
+			if(Percent&amp;gt;1000)	Percent=1000;
+			if(Channel==1) TA0CCR1= TA0CCR0-Percent*TA0CCR0/1000;
+			if(Channel==2) TA0CCR2= TA0CCR0-Percent*TA0CCR0/1000;
+			break;
+		}
+		default: return(0);
+		}
+		return (1);
+	}
+
+/*************TA1*******************/
+
+/******************************************************************************************************
+* 名       称：TA1_PWM_Init()
+* 功       能：TA1定时器作为PWM发生器的初始化设置函数
+* 入口参数：Clk:时钟源 &apos;S&apos;=SMCLK;   &apos;A&apos;=ACLK ;   &apos;E&apos;=TACLK(外部输入)； &apos;e&apos;= TACLK(TACLK取反)
+                    Div:时钟分频系数: 1/2/4/8
+		    Mode1:通道1的输出模式 &apos;F&apos;设为超前PWM（模式7），&apos;B&apos;滞后PWM（模式3） ，&apos;D&apos;带死区增PWM（模式6），0=禁用
+		    Mode2:通道2的输出模式 &apos;P&apos;设为超前PWM（模式7），&apos;B&apos;滞后PWM （模式3），&apos;D&apos;带死区减PWM（模式2），0=禁用
+		    设置输出带死区控制的PWM时，两通道均需使用，且均为死区模式。
+* 出口参数：1表示设置成功，0表示参数错误，设置失败。
+* 说       明 : 在调用PWM相关函数之前，需要调用该函数设置TA的模式和时钟源。
+* 范       例 : TA1_PWM_Init(&apos;A&apos;,1,&apos;P&apos;,&apos;P&apos;)TA时钟设为ACLK,通道1和通道2均为超前PWM输出
+                   TA1_PWM_Init(&apos;S&apos;,4,&apos;D&apos;,&apos;D&apos;)TA时钟设为SMCLK/4, 通道1为死区增PWM、通道2为死区减PWM
+                   TA1_PWM_Init(&apos;A&apos;,1,&apos;P&apos;,0)TA时钟设为ACLK,通道1超前PWM输出，通道2不作TA用。
+ ******************************************************************************************************/
+char TA1_PWM_Init(char Clk,char Div,char Mode1,char Mode2)
+{
+  TA1CTL =0;																// 清除以前设置
+
+  switch(Mode1)															//为定时器选择计数模式
+  {
+  case &apos;F&apos;: case &apos;f&apos;:														//普通PWM
+	  TA1CTL |=MC_1; break;										//主定时器为增计数
+  case &apos;B&apos;:case &apos;b&apos;:
+	  TA1CTL |=MC_1; break;										//主定时器为增计数
+  case &apos;D&apos;: case &apos;d&apos;:														//死区PWM
+      TA1CTL |=MC_3; break;										//主定时器为增减计数
+  default : return(0);													//其他情况都是设置参数有误，返回0
+  }
+
+  switch(Clk)  																//为定时器TA选择时钟源
+  {
+    case &apos;A&apos;: case &apos;a&apos;:  	TA1CTL|=TASSEL_1; break;   			//ACLK
+    case &apos;S&apos;: case &apos;s&apos;: 	TA1CTL|=TASSEL_2; break;  			//SMCLK
+    case &apos;E&apos;:            		TA1CTL|=TASSEL_0; break;  			//外部输入(TACLK)
+    case &apos;e&apos;:          			TA1CTL|=TASSEL_3; break;   			//外部输入(TACLK取反)
+    default :  return(0);  														//设置参数有误，返回0
+  }
+  switch(Div) 																		//为定时器TA选择分频系数
+  {
+    case 1:   TA1CTL|=ID_0; break;   //1
+    case 2:   TA1CTL|=ID_1; break;   //2
+    case 4:   TA1CTL|=ID_2; break;   //4
+    case 8:   TA1CTL|=ID_3; break;   //8
+    default :  return(0);  														//设置参数有误，返回0
+  }
+  switch(Mode1)										 							//设置PWM通道1的输出模式。
+  {
+     case &apos;F&apos;:	case &apos;f&apos;:
+              TA1CCTL1 =OUTMOD_7;
+              TA11_SET;
+              break;
+     case &apos;B&apos;:	case &apos;b&apos;:
+              TA1CCTL1 =OUTMOD_3;
+              TA11_SET;
+              break;
+     case &apos;D&apos;: case&apos;d&apos;:
+	     TA1CCTL1 =OUTMOD_6;
+    	     TA11_SET;
+    	     break;
+      case &apos;0&apos;:case 0:   									//如果设置为禁用
+             TA11_OFF;   									//TA0.1恢复为普通IO口
+              break;
+     default :  return(0); 							    //设置参数有误，返回0
+  }
+  switch(Mode2) 										//设置PWM通道2的输出模式。
+  {
+      case &apos;F&apos;:	 case &apos;f&apos;:
+              TA1CCTL2 =OUTMOD_7;
+              TA12_SET;
+       case &apos;B&apos;:	case &apos;b&apos;:
+              TA1CCTL2 =OUTMOD_3;
+              TA12_SET;
+                break;
+       case &apos;D&apos;: case &apos;d&apos;:
+	       	   TA1CCTL2 =OUTMOD_2;
+	       	   TA12_SET;
+	       	   break;
+       case &apos;0&apos;:case 0:   									//如果设置为禁用
+           	 	TA12_OFF;   								//TA0.1恢复为普通IO口
+           	 	break;
+       default :  return(0); 							//设置参数有误，返回0
+    }
+  return(1);
+}
+/******************************************************************************************************
+* 名       称：TA1_PWM_SetPeriod()
+* 功       能：设置PWM发生器的周期
+* 入口参数：Channel: TA0=0, TA1=1
+*                     Period:周期(0~65535) 时钟个数
+* 出口参数：1：设置成功     0：设置失败
+* 说       明 : 普通PWM与带死区PWM周期相差一倍
+* 范       例 : TA1_PWM_SetPeriod(500)设置PWM方波周期为500或1000个时钟周期
+ ******************************************************************************************************/
+char TA1_PWM_SetPeriod(unsigned int Period)
+{
+	if (Period&amp;gt;65535)	return(0);
+	 TA1CCR0 = Period;
+	return(1);
+}
+
+/******************************************************************************************************
+* 名    称：TA0_PWM_SetPermill()
+* 功    能：设置PWM输出的占空比(千分比)
+* 入口参数：Channel: 当前设置的通道号  1/2
+            Duty: PWM高电平有效时间的千分比 (0~1000)，
+* 出口参数：1设置成功，0设置失败
+* 说    明: 1000=100.0%  500=50.0% ，依次类推。死区模式时，两channel同时设定。
+* 范    例: TA_PWM_SetPermill(1,300)设置PWM通道1方波的占空比为30.0%
+               TA_PWM_SetPermill(2,,825)设置PWM通道2方波的占空比为82.5%
+ ******************************************************************************************************/
+char TA1_PWM_SetPermill(char Channel,unsigned int Duty)
+{
+	unsigned char Mod;
+	unsigned long int Percent=0;								//防止乘法运算时溢出
+	Percent=Duty;
+	switch (Channel)													//先判断出通道的工作模式
+		{
+	case 1:
+		Mod = (TA1CCTL1 &amp;amp; 0x00e0)&amp;gt;&amp;gt;5;		break;	//读取输出模式，OUTMOD0位于5-7位
+	case 2:
+		Mod = (TA1CCTL2 &amp;amp; 0x00e0)&amp;gt;&amp;gt;5;		break;	//读取输出模式，OUTMOD1位于5-7位
+	default:	return(0);
+		}
+
+	switch(Mod)			//根据模式设定TACCRx
+		{
+	case 2: case 6:			/**死区模式2,6时，需要判断修正死区时间，且同时设定TA1CCR1/2 的值*/
+		{
+			if((1000-2*Percent)&amp;lt;=DEADTIME)	//预留死区时间
+				Percent=(1000-DEADTIME)/2;
+			TA1CCR1=Percent* TA1CCR0/1000;
+			TA1CCR2= TA1CCR0-TA1CCR1;
+			break;
+		}
+		case 7:
+		{
+			if(Percent&amp;gt;1000)	Percent=1000;
+			if(Channel==1) TA1CCR1=Percent* TA1CCR0/1000;
+			if(Channel==2) TA1CCR2=Percent* TA1CCR0/1000;
+			break;
+		}
+		case 3:		//占空比一律为正脉宽，所以需要 TA1CCR0减去占空比
+		{
+			if(Percent&amp;gt;1000)	Percent=1000;
+			if(Channel==1) TA1CCR1= TA1CCR0-Percent* TA1CCR0/1000;
+			if(Channel==2) TA1CCR2= TA1CCR0-Percent* TA1CCR0/1000;
+			break;
+		}
+		default: return(0);
+		}
+		return (1);
+	}
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;pre&gt;&lt;code&gt;/*
+ * ta_pwm.h
+ *
+ *  Created on: 2013-2-9
+ *      Author: Administrator
+ */
+
+#ifndef TA_PWM_H_
+#define TA_PWM_H_
+
+extern char TA0_PWM_Init();
+extern char TA0_PWM_SetPeriod();
+extern char TA0_PWM_SetPermill();
+
+extern char TA1_PWM_Init();
+extern char TA1_PWM_SetPeriod();
+extern char TA1_PWM_SetPermill();
+
+#endif /* TA_PWM_H_ */
+&lt;/code&gt;&lt;/pre&gt;
+</content:encoded></item><item><title>MSP430时钟树</title><link>https://liushuideng.com/posts/msp430-shi-zhong-shu/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-shi-zhong-shu/</guid><description>本文从电路级的角度讲解了430的三种时钟源的来源及内部分频使用过程，有助于深入了解常见单片机片上系统时钟的基本构造。如果是初学者，建议不着急看这部分内容，根据例</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;本文从电路级的角度讲解了430的三种时钟源的来源及内部分频使用过程，有助于深入了解常见单片机片上系统时钟的基本构造。如果是初学者，建议不着急看这部分内容，根据例程照写即可，先学功能，熟练后在学原理。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;本文主要内容，来源于官方&lt;a href=&quot;http://www.ti.com.cn/cn/lit/ug/slau144j/slau144j.pdf&quot;&gt;MSP430x2xx Family User&apos;s Guide&lt;/a&gt;文档Basic Clock Module章节。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;MSP430的时钟&lt;/h1&gt;
+&lt;p&gt;MSP430有四种时钟源和三种时钟，分别介绍：&lt;/p&gt;
+&lt;h2&gt;时钟源&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;LFXT1CLK，默认可以接一个标准低频(32.768kHz)的钟表上的晶振，用于计时等应用，也可以通过外接 400kHz～16MHz 的高速晶体振荡器或谐振器工作在高频模式（根据单片机的型号不同，最高有的只能到8M）。&lt;/li&gt;
+&lt;li&gt;XT2CLK，外接高频晶振（400kHz～16MHz）。&lt;/li&gt;
+&lt;li&gt;DCOCLK，内部数控 RC 振荡器，由内部的一个RC电路振荡产生。&lt;/li&gt;
+&lt;li&gt;VLOCLK，内部的超低频超低功耗振荡时钟，一般只有12kHz左右（实际不准）。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;是不是有点懵，怎么这么多，其实他们各有特点，我们一般选择其中一种或者两种来使用，一般不会全用到他们。这四种模式，LFXT1CLK和XT2CLK记住都是要外界晶振的，&lt;strong&gt;很多新手代码配置使用这两种时钟但是电路不接晶振，后果就是CPU不能运行，感觉代码没往下走，仿真器调试也走不动&lt;/strong&gt;，LFXT1CLK接的是低频晶振（你接个上MHz高频的也可以，不超过范围就可以），XT2CLK接的是高频晶振，在高级一些的430上的接法一般如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_two_clock_oscillator.png&quot; alt=&quot;430_two_clock_oscillator&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;圆柱形的就是低频晶振，椭圆形的就是高频的。在Launchpad上，位置在这里：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_two_clock_position.png&quot; alt=&quot;430_two_clock_position&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;看到没，这两个位置是重叠的，引脚也连在一起，说明只能二选一，而且新买的板子开箱是没有帮你焊接晶振的，所以这也是为什么很多人代码跑不起来的原因，箱子里自带的一个小袋子里有个很小的金黄色晶振，可以自己焊上（引脚很细，不会焊接的同学考验你们动手能力的时候来了）。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_launchpad_osc.png&quot; alt=&quot;430_launchpad_osc&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;DCOCLK和VLOCLK是内部振荡电路产生的时钟，所以不需要外接晶振。学过模拟电路的会知道RC电路可以产生振荡，振荡的频率跟所用的电阻和电容有关。而材料的电阻和电容一般情况下会有&quot;温漂&quot;，温度变化会导致电阻和电容变化。所以，这两种时钟跟前面两种相比&lt;strong&gt;最大的特点就是不稳定&lt;/strong&gt;，夏天和冬天出来的频率值可能就差很多，或者用手摸一下，把单片机摸热，频率就漂了。如果你需要产生精准的定时、波形频率或者CPU频率，&lt;strong&gt;请使用晶振&lt;/strong&gt;。（有些特殊场景下，还有恒温晶振，也就是说晶振也有温漂，只不过比较小而已，工业军工场景要求更严苛，恒温晶振内部有恒温电路保持晶振温度不变来减小这种偏差，不过430这种level的芯片一般用不上，FPGA用的多）。另外，VLOCLK是固定的，DCOCLK可以通过调节内部直流电压控制产生的频率。&lt;/p&gt;
+&lt;h2&gt;时钟类型&lt;/h2&gt;
+&lt;p&gt;MSP430上有三种时钟，辅助时钟ACLK（Auxillary Clock），系统主时钟MCLK(Main Clock)，子系统时钟SMCLK(Sub-System Clock)。他们的来源无外乎从上面几种时钟源里选择，区别主要在于用途不同，ACLK一般用于低速的外设，比如低速的定时器、串口等；MCLK可以理解为主要用在CPU运行上，当然也可以输送给一些高速外设使用；SMCLK则是专门给高速外设准备的了，比如高速的定时器（这里不是说有高低速两个定时器，而是定时器工作在高速时钟还是低速时钟），SPI接口等。&lt;/p&gt;
+&lt;p&gt;如果这种解释还不清晰，画个图就明白了：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_osc2clock.png&quot; alt=&quot;430_osc2clock&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;可以看到TI限制了ACLK只能从低频的两个时钟源里面选择，MCLK和SMCLK的可以随便选择。实际电路中肯定不是这里直接用线连接这么简单，中间有一坨电路主要有两个功能：1、实现图中箭头所示的选择功能。2、分频。具体要讲就要上电路图了，推荐看之前有了解一些基本的数字电路知识（了解下图中那个梯形的复用器就行了，就是个选择开关）。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_clock_tree_schme.png&quot; alt=&quot;430_clock_tree_schme&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;讲电路之前，简单介绍下复用器的基本知识，不然不知道下面图里面是什么，以及写代码那一大堆的XXX = BIT0在干啥。截一个复用器如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_clock_mux.png&quot; alt=&quot;430_clock_mux&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这玩意其实就是一个开关，上面有两个输入，这里用的寄存器SELMx表示，我们知道二进制两位可以表示4种情况00 01 10 11，看到没，它有四个输入引线，一个输出，每种数字就代表把一种数据接到输出去，SELMx就是这个起决定作用的东西。所以，我们编程看到文档里面对于寄存器经常是这么介绍的：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_clock_mux_reg.png&quot; alt=&quot;430_clock_mux_reg&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;弄个8位或者32位寄存器的表格，然后列表告诉你某种功能怎么配，初学者不用了解原理，按照表格弄就可以了。稍微深入一点的就会知道，这就是在折腾上面那一坨选择开关，把电路组成我们想要的功能。&lt;/p&gt;
+&lt;h2&gt;时钟产生&lt;/h2&gt;
+&lt;p&gt;好，言归正传，看看四种时钟：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;先看VLOCLK，第一个画红框的，产生画的很简单，内部低功耗低频振荡器(Internal LP/LF Oscillator)，至于内部什么结构做到低功耗的，那就是TI的黑科技了。&lt;/li&gt;
+&lt;li&gt;再来看LFXT1CLK，看起来很复杂，就是外部晶振(XIN和XOUT接的)接到起振电路(黑框里的，有负载电容和正反馈电路，里面每个英文单词引脚就是一个寄存器，软件可以配置，先不管)，起振后信号从XIN那里的连线输出到放大和滤波器(Min Pulse Filter)就得到了这个时钟。&lt;/li&gt;
+&lt;li&gt;再看XT2CLK，他说到底也是晶振，只不过频率高，所以黑框里的起振电路出来后经过滤波就到了箭头所指的地方，成为时钟源信号。&lt;/li&gt;
+&lt;li&gt;DCOCLK的产生是最复杂的，它是个压控电路，首先是VCC经过DCOR选择后通过，进入直流发生器(DC Generator，我估计内部是个电阻分压电路，或者再带个稳压，通过RSELx可以调出16种电压)，调节后的电压到达DCO，产生特定频率的振荡，MODx这里先不细讲，然后信号形成DCOCLK。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;选择与分频&lt;/h2&gt;
+&lt;p&gt;信号是怎么从晶振开始形成的将完了，第二个功能就是选择和分频。看到三个梯形没有，分别是LFXT1Sx、SELMx、SELS控制，这几个就控制ACLK、MCLK、SMCLK选啥，看过上面复用器的介绍应该就能看明白。选好后，进入Divider分频，这就是分频器，可以吧比如8M的时钟分成4M或者2M或者1M等（也可以不分频）。分频器的内部实现是触发器，这个学过数字电路的就知道，立个flag，后面专门开个分类讲数字电路。最后在过个SCG1控制的开关就OK了，SCG0可以控制直流源不产生直流电压，在不使用DCO的时候用到。（有人问用SCG1不选DCO不就搞定了，这当然是为了低功耗呀，源头不产生直流就能减小系统的电流消耗，430的低功耗是需要软件设计的，不是天生硬件就低功耗，软件随便折腾）。&lt;/p&gt;
+&lt;p&gt;好，到这里时钟树就讲完了。430比51的要复杂，51的内部就是起振和12分频电路，但是比ARM又要简单。但是这三种基本原理是一模一样的，下面是STM32的时钟图，可以看懂吗？&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_clock_tree_stm32.png&quot; alt=&quot;430_clock_tree_stm32&quot; /&gt;&lt;/p&gt;
+&lt;h2&gt;代码实现&lt;/h2&gt;
+&lt;p&gt;理解了上面的电路之后，代码就是小意思了，找下官方G2553的&lt;a href=&quot;http://www.ti.com.cn/general/cn/docs/lit/getliterature.tsp?baseLiteratureNumber=slac485&amp;amp;fileType=zip&quot;&gt;code example&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;打开\MSP430G2xx3_Code_Examples\C\msp430g2xx3_clks.c，可以看到官方写的一个时钟使用例程如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_clock_code_intro.png&quot; alt=&quot;430_clock_code_intro&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;示例程序的使用方法都会写在注释里，外界32kHz时钟晶振要焊接，然后P1.0输出ACLK，P1.4输出SMCLK，P1.1输出MCLK/10。C代码如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;msp430.h&amp;gt;
+
+int main(void)
+{
+  WDTCTL = WDTPW +WDTHOLD;                  // Stop Watchdog Timer
+  P1DIR |= BIT0 + BIT1 + BIT4;              // P1.0,1 and P1.4 outputs
+  P1SEL |= BIT0 + BIT4;                     // P1.0,4 ACLK, SMCLK output
+
+  while(1)
+  {
+    P1OUT |= BIT1;    	                    // P1.1 = 1
+    P1OUT &amp;amp;= ~BIT1;                         // P1.1 = 0
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;纠正官方的错误，P1.1是采用在代码里面死循环反转引脚电压实现的，所以肯定也不是MCLK/10这个频率，具体多少大家可以用板子自己测试一下（可能需要示波器或者频率计或者逻辑分析仪观察）。我手上板子没有晶振，所以用PROTEUS简单新建了一个仿真工程如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_clock_simu.png&quot; alt=&quot;430_clock_simu&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;用虚拟示波器观察波形如图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_clock_wave.png&quot; alt=&quot;430_clock_wave&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;仿真软件的实时性是不可靠的，但是也可以简单的看到P1.4明显不是P1.1的频率的10倍。因为仿真软件的问题，32.768kHZ的晶振不起振，所以ACLK的那跟黄色波形看不到效果。&lt;/p&gt;
+</content:encoded></item><item><title>MSP430学习方法</title><link>https://liushuideng.com/posts/msp430-xue-xi-fang-fa/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-xue-xi-fang-fa/</guid><description>这篇文章是写了几篇430的博客之后中间加的，原因是写博客的过程中，我不断会参考很多的官方文档、工具、示例代码等等，每篇文章都去说明从哪里能获取到这些参考资料未免</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;这篇文章是写了几篇430的博客之后中间加的，原因是写博客的过程中，我不断会参考很多的官方文档、工具、示例代码等等，每篇文章都去说明从哪里能获取到这些参考资料未免太过啰嗦，所以专门写一个帖子介绍相关的方法、参考资料等等。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;430学习方法&lt;/h1&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;入手开发板 ------ 站在岸上学不会游泳，虽然博客中我大量使用了仿真软件来演示，但是这也是基于我已经掌握并熟悉了相关电路的基础上。EE（电子工程）不是CS（计算机科学），不像计算机专业那样只需要一台电脑就够了，需要你掌握硬件的实际操作经验。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;学会申请样片 ------ 申请样片的方法就不啰嗦了，如果你是学生，相对来说最好申请，各大厂商对学生一向比较慷慨。如果你是工作党或者社会人士，相对来说申请难度比较大。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;多看官网 ------ 硬件说到底还是由上游厂商引领核心技术的行业，所以他们手里有你想要的一切东西。TI的官网上，拥有最详细最权威的文档。虽然在一开始的时候，你可能需要借助相关的第三方文档或者是我这样的博客来减少接触到的信息量，快速入门。但如果你想深入研究，还是建议参考官方详尽的文档。下面是我这个系列博客参考过的官方文档列表：&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul&gt;
+&lt;li&gt;MSP430G2553 code example(示例程序)：&lt;a href=&quot;http://www.ti.com/cn/lit/zip/slac485&quot;&gt;链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;MSP430G2553 datasheet：&lt;a href=&quot;http://www.ti.com/cn/lit/gpn/msp430g2553&quot;&gt;链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;MSP430X2XX系列用户指南（中文版）：&lt;a href=&quot;http://www.ti.com/cn/lit/pdf/zhcu032&quot;&gt;链接&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ol&gt;
+&lt;li&gt;提高信息获取效率 ------ 嵌入式相关的从业人员，虽然近些年有点类似软件一样泛滥的趋势，但是跟软件巨大的人员基数不同，个人感觉网络上进行分享的嵌入式开发者还是很少很少，所以需要你提高信息筛选获取的效率。下面的几点都是个人经验之谈：&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul&gt;
+&lt;li&gt;百度知道的提问、百度文库所谓的中文datasheet还有示例代码，基本都是驴唇不对马嘴，建议直接忽略。&lt;/li&gt;
+&lt;li&gt;碰到问题的时候，可以上google先搜索一下，如果搜索不到，建议上比较活跃的官方论坛求助，TI家的推荐上德仪论https://e2echina.ti.com/question_answer/ 。&lt;/li&gt;
+&lt;li&gt;datasheet建议直接上官网或者alldatasheet或者datasheet5。&lt;/li&gt;
+&lt;li&gt;CSDN博客的技术文章部分可以参考，但是CSDN整站的体验太差，广告很多建议不看。CSDN需要下载的一些例程，除非其他地方找不到，不建议下载，很多都是垃圾。例程下载建议上http://www.pudn.com/ ,虽然不知道从哪里弄的，但是例程很多，下载积分选5个自己写的好的资源上去，基本够用好几年了。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;博学纵观 ------ 除了TI，还有很多优秀的其他厂商可以学习。例如ADI擅长模拟电路器件，其官网首页的应用、设计资源、中文技术资源三个标签里面干货满满。他出了很多《ADI实验室合集》，虽然里面都是使用的ADI芯片作为示例，但重要的是学会相关的电路基础知识和电路常见问题处理技巧。ADI从上世纪六十年代，就开始出《模拟对话》的期刊，还有很多参考设计等等。这些资料的质量和有效性，远远高出了百度和一般论坛搜索到的相关内容。还有MAXIM、瑞萨、凌力尔特等等，不少由于申请过样片，所以看了下也都有很多不错的参考文档。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;夯实基础知识 ------ 如果想成为一名优秀的电子工程师，个人认为需要掌握如下基础知识（虽然好多我自己也是渣渣）&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul&gt;
+&lt;li&gt;英语，官方的很多资料、论坛仍然是英文的，强迫自己看这些英文内容慢慢就能看懂了。&lt;/li&gt;
+&lt;li&gt;低频模拟电路，如果是电子信息类的专业，这个是必修课，对理解电路、运放、晶体管大有裨益。&lt;/li&gt;
+&lt;li&gt;数字电路基础，同样也是电子信息类的必修课，对理解逻辑门、数字电路是必需知识。&lt;/li&gt;
+&lt;li&gt;集成电路基础，如果你不是IC设计与制造相关的工作，可以不用深入理解，据说很多东西深入了都是是数学和量子论的东西。但是你需要知道PN结、MOS管这些的原理和特性，对集成电路的工作方式、电流特性、开关特性有个基本理解，在数字电路低功耗设计、开关电源效率提升等场景还是很有用处的。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr /&gt;
+&lt;p&gt;总的来说，上面这些不仅限于430，也适合其他很多相关领域的学习。嵌入式的学习，相对计算机应用软件编程来说，门槛高一点，对理论知识要求稍高，但个人感受更高的门槛在于学习成本。一个入门的示波器也得一千多以上，好点的上万，数字电源、任意波形发生器、网络分析仪则一个比一个贵。而这些只是仪器，像焊台、元器件、芯片这些耗材则是做一次实验花一次钱。这些问题都是钱的问题，还有一些不是钱的问题，有些电路、固件在上游的厂商直接是闭源的，这个跟软件开源的大环境不同，需要进入更高的平台和体系才能接触到。&lt;/p&gt;
+&lt;p&gt;所以，有志于在EE方向上走的更远的爱好者，如果你是在校学生，可以好好珍惜夯实理论知识的学习时间，把握学校实验室提供的资源提升自己。如果你是工作党，那么争取好的研发环境，只有有实力的实验室才会提供更好的支持。&lt;/p&gt;
+&lt;p&gt;道阻且长，大家一起努力，玩的开心~&lt;/p&gt;
+</content:encoded></item><item><title>MSP430介绍</title><link>https://liushuideng.com/posts/msp430-jie-shao/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-jie-shao/</guid><description>本文主要介绍一下MSP430系列的单片机的特性以及优缺点，快速了解我写的这些博客是在讲个什么东东 请参照万能的TI官网,在微控制器栏目,你可以看到下面的分类介绍</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;本文主要介绍一下MSP430系列的单片机的特性以及优缺点，快速了解我写的这些博客是在讲个什么东东&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;请参照万能的TI&lt;a href=&quot;http://www.ti.com.cn&quot;&gt;官网&lt;/a&gt;,在&lt;a href=&quot;http://www.ti.com.cn/zh-cn/microcontrollers/overview.html&quot;&gt;微控制器栏目&lt;/a&gt;,你可以看到下面的分类介绍：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/mcu_overview.png&quot; alt=&quot;mcu_overview&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;可以看到TI的MCU分为这么几大类：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;低功耗MCU&lt;/strong&gt;——主要用于要求耗电低、长期待机的场合，比如24小时运行的环境监测器、电表，可穿戴设备等。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;低功耗ARM&lt;/strong&gt;——解决430不能兼顾有些又要低功耗又要一定的运算性能的场景，比如智能家居的某些传感、网关设备等。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;电机控制MCU&lt;/strong&gt;——主要是C2000系列，解决电机步进、快速闭环控制等工业场景，主要用于简单的电机控制场景。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;数字电源MCU&lt;/strong&gt;——分为UCD系列专用电源芯片和部分C2000，在数字开关电源要求高精度PWM控制、驱动MOS等场景使用。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;无线MCU&lt;/strong&gt;——官网讲CC2XXX、CC3XXX、MSP432归在其中，2XXX主要是低功耗蓝牙（BLE），3XXX主要是WIFI场景，这些芯片内部其实都是嵌入了一个51内核，方便实现一些简单的控制和通信协议。MSP432归入其中可能是想作为物联网的网关使用，具体没有了解过，有兴趣的可以深究。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;电容触摸MCU&lt;/strong&gt;——主要是利用的430单片机管脚感知触控的功能，很多型号都有，具体的原理和使用后面有空可以专门整理下&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;无线主机MCU&lt;/strong&gt;——就是前面的MSP432&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;安全MCU&lt;/strong&gt;——看介绍主要是用于高可靠性、高安全认证要求的工业级场景，例如机械控制、网络信令传输等，实在没接触过不多讲。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;上面这么多系列，其实我只接触过低功耗的430与TIVA C系列，我们可以根据实际的使用需求选择合适的芯片，熟悉一个之后同类别的上手基本不会有障碍。&lt;/p&gt;
+&lt;p&gt;回到MSP430，它最大的特点其实就是低功耗，甚至官方有视频使用橙子、土豆等原电池带动430。在功耗要求特别严格的场景下，使用430并合理设置低功耗工作模式可以达到长期工作的要求。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_overview.png&quot; alt=&quot;430_overview&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;MSP430具体有功能特性需要具体到某一款芯片型号，不同的子系列之间的计算能力、功耗、外设数量都有区别。这个系列的博客主要用官方入门最常用的2553做例子，网络上的资源也相对容易寻找（另一个好找的是F149,主要是淘宝上很多出套件的）。看看MSP430G2553的特性：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;还是推荐看下&lt;a href=&quot;http://www.ti.com.cn/product/cn/MSP430G2553/description&quot;&gt;官网介绍&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;img src=&quot;http://www.ti.com/graphics/folders/partimages/MSP430G2553.jpg&quot; alt=&quot;&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;特性&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;低电源电压范围：1.8V 至 3.6V&lt;/li&gt;
+&lt;li&gt;超低功耗&lt;br /&gt;
+运行模式：230μA（在 1MHz 频率和 2.2V 电压条件下）&lt;br /&gt;
+待机模式：0.5μA&lt;br /&gt;
+关闭模式（RAM 保持）：0.1μA&lt;/li&gt;
+&lt;li&gt;5 种节能模式&lt;/li&gt;
+&lt;li&gt;可在不到 1μs 的时间里超快速地从待机模式唤醒&lt;/li&gt;
+&lt;li&gt;两个 16 位 Timer_A，分别具有三个捕获/比较寄存器&lt;/li&gt;
+&lt;li&gt;多达 24 个支持触摸感测的 I/O 引脚&lt;/li&gt;
+&lt;li&gt;USCI\UART\SPI\I2C&lt;/li&gt;
+&lt;li&gt;用于模拟信号比较功能或者斜率模数 (A/D) 转换的片载比较器&lt;/li&gt;
+&lt;li&gt;带有内部基准、采样与保持以及自动扫描功能的 10 位 200ksps 模数 (A/D) 转换器&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;超低功耗&lt;/strong&gt;&lt;br /&gt;
+低功耗是430最大亮点不多啰嗦，运行模式也只有230uA，当然限制了1MHz的运行速率，如果满速跑没有这么低功耗。有些场景我们的机器其实大部分都在待机，等待定时采样一下或者外部传感器变化了出发采集，那么待机模式能做到0.5uA，这个时候其实部分外设是不工作了，是与运行模式的主要差别。如果有些仪器甚至不会周期性工作，必须等待用户操作了之后才进行工作，那平时进入关闭模式做到0.1uA就很小很小了，可能耗电速度赶不上电池自放电的速度了。上面的这些模式需要我们用的时候根据场景灵活安排，如果上来就最好频率甚至超频运行，使能不需要的管脚输出以及外设，想做到超低功耗也是很难的。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;快速唤醒&lt;/strong&gt;&lt;br /&gt;
+MSP430唤醒时间不到1us，对使用的实时性影响较小。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;各种外设&lt;/strong&gt;&lt;br /&gt;
+这里总的来说，在2553上就有16位比较器（位长越长可设置的定时时间越长），IO引脚触摸功能，UART、SPI、I2C等常见串行通信接口、10位200K采样率ADC（精度不高但简单场景够用了）&lt;/p&gt;
+&lt;p&gt;上面的就是MSP430的基本情况，具体怎么用它们做些好玩的东西我们后面慢慢介绍。&lt;/p&gt;
+</content:encoded></item><item><title>MSP430呼吸灯</title><link>https://liushuideng.com/posts/msp430-hu-xi-deng/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-hu-xi-deng/</guid><description>类似于纯软件编程中的hello world,单片机的入门一般从翻转IO开始，可以看到无数的教材和实验都从点亮一颗LED开始，这个实验既可以检验我们的开发环境包括</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;类似于纯软件编程中的hello world,单片机的入门一般从翻转IO开始，可以看到无数的教材和实验都从点亮一颗LED开始，这个实验既可以检验我们的开发环境包括单板、IDE、基础代码等是否OK，又可以让初学者所见即所得，感受自己的代码转变为对应硬件行为的有趣之处。&lt;/p&gt;
+&lt;p&gt;这篇入门博客也不免俗，我们就从翻转IO开始，但我们要到做出一个好玩的呼吸灯才结束。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h4&gt;1、我要准备什么？&lt;/h4&gt;
+&lt;h5&gt;1.1、硬件&lt;/h5&gt;
+&lt;p&gt;学习单片机，由于跟硬件有关系，所以还是推荐入手一块实际的板子，无论是什么外设都不带只有一块单片机芯片的最小系统，还是带整套外设的开发板都可以。但是我自己有下面几点建议：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;目前市场上，同等配置，430的板子一般比51和STM32的要贵，430芯片本身价格稍贵加之卖的没有51和STM32那么普遍，所以做好心理准备，充分了解430的优点和选型，嵌入式属于比较烧钱的兴趣，开发板会是你的第一笔投资。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;下载器是容易忽略又必不可少的部分，430正版的FET调试器比较贵，个人认为没有必要花2~300买这种全系的调试器，如果你入门使用的是比较新的系列，支持SBW调试，推荐直接入手一块官方的MSP430 LAUNCHPAD，70左右同时得到了调试器和2553/2452芯片两枚。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;如果入手淘宝上个人制作的开发板，请注意&lt;strong&gt;是否有调试器&lt;/strong&gt;以及&lt;strong&gt;配置够用即可&lt;/strong&gt;，没有必要花大价钱买所谓顶配开发板，不实用。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;最后，如果是在校大学生，可以关注TI官网，LAUNCHPAD系列有可能会打折甚至免费申请，TI对教育的支持力度很大，在校学生和老师可以在官网比较容易地申请到样片。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;除此之外，一台电脑也是必须的，对配置没要求，能用就行。&lt;/p&gt;
+&lt;h5&gt;1.2、软件&lt;/h5&gt;
+&lt;p&gt;MSP430的软件开发推荐使用TI官方的CCS软件，在&lt;a href=&quot;http://www.ti.com.cn/&quot;&gt;官网&lt;/a&gt;即可下载，也可以在我这里贴的&lt;a href=&quot;http://processors.wiki.ti.com/index.php/Download_CCS&quot;&gt;WIKI地址&lt;/a&gt;下载
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/ccs_download_guide.png&quot; alt=&quot;ccs_download_guide&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;除了CCS,还有其他的软件可以开发，比如IAR，或者使用VIM搭配430 GCC编译，后面这两种都不推荐。软件安装这里不作介绍，网上一大把，最常碰到的问题是杀毒软件拦截导致安装失败、GHOST系统被精简导致launchpad调试器驱动安装不上等，为了避免这些问题：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;1.关闭360等杀毒软件&lt;/li&gt;
+&lt;li&gt;2.确保系统用户不是中文名&lt;/li&gt;
+&lt;li&gt;3.安装位置有至少2G空间&lt;/li&gt;
+&lt;li&gt;4.安装路径不要有中文或者特殊符号&lt;/li&gt;
+&lt;li&gt;5.如果插上开发板驱动安装失败，无法下载程序，可以手动安装试试，CCS对应驱动目录：CCS安装目录\ ccsv6\ccs_base\emulation\drivers。在计算机上右键-设备管理器-找到要安装驱动的设备-右键更新驱动程序-从列表或者指定位置安装-点击浏览选择到驱动所在位置-确定，程序会自动搜索并安装驱动&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果你不想入手开发板，想先试试开发环境，还有一个PROTEUS软件，可以方针很多芯片，其中就有MSP430的部分基础型号，这个软件自带了一个仿真单片机电路的环境，自带一个代码编辑器，然后配合CCS或者GCC的编译器可以实现全套的运行和仿真。不过个人建议在资源紧缺的时候作补充验证作用，最后做出实物肯定还是要准备硬件的，毕竟站在岸上学不会游泳。
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/proteus_show.png&quot; alt=&quot;ccs_workspace&quot; /&gt;&lt;/p&gt;
+&lt;h4&gt;2、还是先点个LED试试吧&lt;/h4&gt;
+&lt;p&gt;铺垫这么多，还是先老老实实点个LED试试吧。&lt;/p&gt;
+&lt;h5&gt;2.1、熟悉CCS&lt;/h5&gt;
+&lt;p&gt;如果一切顺利，安装完CCS并打开，你能看到这是基于ECLIPSE引入插件构成的IDE，所以具有ECLIPSE最典型的特征-workspace（工作空间）。Workspace实际上就相当于一个文件夹，你可以在里面建立很多工程。唯一值得注意的是，你对编辑器所做的所有设置均会存放于workspace下的.metadata（隐藏文件夹）文件夹中，换一个workspace,这个metadata配置不会转到新的工作空间中去，相当于换了一个新的编辑器，这也是Eclipse的优点之一。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/ccs_workspace.png&quot; alt=&quot;ccs_workspace&quot; /&gt;&lt;/p&gt;
+&lt;h5&gt;2.2、熟悉快捷键&lt;/h5&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;快捷键&lt;/th&gt;
+&lt;th&gt;功能&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Ctrl + C\V\X\S&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;复制\粘贴\剪切\保存&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Ctrl + F&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;查找\替换&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Ctrl + H&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;高级查找&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Ctrl + /&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;代码自动提示&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Ctrl + Alt + 上\下&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;向上\向下复制当前行&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Alt + 上\下&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;向上\向下移动当前行&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Tab\Shift + Tab&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;向后\向前缩进&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;F11&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;下载当前工程&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;F8\Ctrl + F8&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;运行\暂停当前调试&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Alt + Shift + R&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;重命名当前变量&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;其他&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;自己百度Eclipse快捷键&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h5&gt;2.3、熟悉开发板&lt;/h5&gt;
+&lt;p&gt;launchpad的主要结构如下图所示：
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/launchpad_topview.png&quot; alt=&quot;blink_led&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;其中，指示灯和按键的主要电路连接关系如下：
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/launchpad_btlight.png&quot; alt=&quot;blink_led&quot; /&gt;
+可以看到LED1和LED2两个灯的正极就连在P1.0和P1.6上，负极都接地，那么当我们操作单片机让P1.0/P1.6输出高电平，就可以点亮了。&lt;/p&gt;
+&lt;h5&gt;2.4、点亮LED代码&lt;/h5&gt;
+&lt;p&gt;打开CCS，在最左边的工作空间右键-&amp;gt;New-&amp;gt;CCS Project，Target选择使用的芯片型号（比如MSP430G2553），Project name输入你的工程名字，然后下面的列表一般选择Empty Project(with main.c)，但是今天我们选择Blink The LED，这样程序就自动帮我们生成了一个闪灯程序，代码如下：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;msp430.h&amp;gt;				
+
+
+/**
+ * blink.c
+ */
+void main(void)
+{
+	WDTCTL = WDTPW | WDTHOLD;		// 停止看门狗
+	P1DIR |= BIT0;					// 设置P1.0管脚为输出脚
+
+	volatile unsigned int i;		// volatile ，下面的延时代码不会被编译器优化
+
+	while(1)
+	{
+		P1OUT ^= BIT0;				// 翻转 P1.0
+		for(i=10000; i&amp;gt;0; i--);     // 延时一会
+	}
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;接下来，插上launchpad，点击顶部小虫子按钮下载代码，然后点绿箭头全速运行，你就可以看到闪烁效果。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/blink_led.gif&quot; alt=&quot;blink_led&quot; /&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;代码解释：&lt;/p&gt;
+&lt;p&gt;P1DIR |= BIT0;					// 设置P1.0管脚为输出脚
+P1OUT ^= BIT0;				// 翻转 P1.0
+.
+首先把P1设置成输出，430的管脚是可以设置的，是输出一个高低电压还是接收外界的电压输入，可以通过P1DIR来设置，BIT0~BIT7分别对应PX.0~PX.7管脚。那么：
+将P2.3管脚设置为输出：P2DIR |= BIT3;
+将P2.3管脚设置为输入：P2DIR &amp;amp;= ~BIT3;
+.
+第二句P1OUT ^= BIT0;中，P1OUT则不掌管输入输出方向了，而是管理输出的到底是高还是低电平。同理：
+P2.3输出高电平：P2OUT |= BIT3;
+P2.3输出低电平：P2OUT &amp;amp;= ~BIT3;
+.
+那这里代码中的^=表示，设置为和当前相反，当前为高则设为低，为低则设置为高。循环执行则实现了我们的闪烁效果。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h4&gt;3、什么是呼吸灯？&lt;/h4&gt;
+&lt;p&gt;呼吸灯是LED灯在我们的控制下，有规律的逐渐从暗变亮又变暗的过程，当我们亮暗的程度和频率把握得当时，看起来灯好像是人在呼吸一样&lt;/p&gt;
+&lt;p&gt;下面是典型的呼吸灯应用场景：开关按钮&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/timg1.gif&quot; alt=&quot;timg1&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;呼吸灯不再是我们闪烁那样一高一低的变化规律，而是有渐变性，是连续变化的。从亮度上来看，闪烁和呼吸灯我们可以猜想变化规律是这样的：
+&lt;img src=&quot;https://image.liushuideng.com/images/blog/light_change.png&quot; alt=&quot;light_change&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;所以呼吸灯核心是，实现亮度的均匀变化！&lt;/p&gt;
+&lt;p&gt;那么单片机是数字系统，只有高低两种状态。渐变的话要有中间不高不低的这种亮度，怎么实现呢？有一种数字系统控制模拟系统经典的办法就是---&lt;a href=&quot;https://baike.baidu.com/item/%E8%84%89%E5%86%B2%E5%AE%BD%E5%BA%A6%E8%B0%83%E5%88%B6/10813756&quot;&gt;PWM调制&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;PWM调制的具体内容初学的话可以不用纠结，只需要跟我一起，动手改改代码就能感受到!&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;首先，我们把代码中的延时取消试试会有什么现象！&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;	while(1)
+	{
+		P1OUT ^= BIT0;				// 翻转 P1.0
+		//for(i=10000; i&amp;gt;0; i--);     // 加&quot;//&quot;注释掉这个延时
+	}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;有什么变化？灯是不是不闪了？那亮度呢？&lt;/p&gt;
+&lt;p&gt;什么，你跟我说很亮？那你记住现在这个亮度，让后把代码改成这样试试：
+P1OUT |= BIT0;				// P1.0常亮&lt;/p&gt;
+&lt;p&gt;P1不再翻转，一直亮，现在这个亮度和刚刚的亮度，哪个亮？-----一样亮？？？好吧。。。&lt;/p&gt;
+&lt;p&gt;看到上面插USB线的那里，是不是有绿色的电源灯，很亮吧。我们下面第二个灯也是绿色的，改变下面两行，我们把灯切换到绿色的上面：
+P1DIR |= BIT6;    // 0改成6
+P1OUT ^= BIT6;    // 0改成6，注意还原成^=翻转&lt;/p&gt;
+&lt;p&gt;然后，跑起来，下面的绿灯是不是亮了，和上面的电源灯比呢？是不是下面的亮度低！&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;原理解释：取消延时后，LED灯的亮和暗之间就不会等待一会了，会以极快的速度亮暗循环变化，亮度的变化波形和加延时是一样的，只不过速度更快了。由于人眼的暂留效应，反应不过来，就看到一直是亮的。但是由于亮和暗交替，LED实际只显示出了50%亮度的效果，看起来就比常亮的电源灯暗一半左右。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;ol&gt;
+&lt;li&gt;现在我们已经实现亮度控制到一般了，那么1/4怎么设置？思考一下，我们把亮的时间控制在1/4，暗的控制在3/4不就行了。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;	while(1)
+	{
+		P1OUT |= BIT0;			  // 亮
+		for(i=100; i&amp;gt;0; i--);     // 延时100
+		P1OUT &amp;amp;= ~BIT0;           // 灭
+		for(i=300; i&amp;gt;0; i--);     // 延时300
+	}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;是不是亮度更低了
+3. 想办法，弄个不是固定而是逐渐变化的比例，把i的长度弄成变量就可以了&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;msp430.h&amp;gt;
+
+void main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;       // 停止看门狗
+    P1DIR |= BIT6;                  // 设置P1.0管脚为输出脚
+
+    volatile unsigned int i;        // volatile ，下面的延时代码不会被编译器优化
+    volatile unsigned int j;        // volatile ，下面的延时代码不会被编译器优化
+
+    while(1)
+    {
+        for(j=400; j&amp;gt;0; j--)
+        {
+            P1OUT |= BIT6;            // 亮
+            for(i=j; i&amp;gt;0; i--);     // 延时100
+            P1OUT &amp;amp;= ~BIT6;            // 灭S
+            for(i=400-j; i&amp;gt;0; i--);     // 延时300
+        }
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;ol&gt;
+&lt;li&gt;是不是感觉这是一个假的呼吸灯，根本不像呼吸的规律，突然变亮更像是心跳。这跟LED的导电电流变化规律有关系，为了使效果更逼真，我们稍微改造一下，让亮度按正弦规律变化而不是三角波的规律变化。代码如下：&lt;/li&gt;
+&lt;/ol&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;msp430.h&amp;gt;
+#include &amp;lt;math.h&amp;gt;
+
+void main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;       // 停止看门狗
+    P1DIR |= BIT6;                  // 设置P1.0管脚为输出脚
+
+    volatile unsigned int i;        // volatile ，下面的延时代码不会被编译器优化
+    volatile unsigned int j;        // volatile ，下面的延时代码不会被编译器优化
+
+    while(1)
+    {
+        for(j=500; j&amp;gt;0; j--)
+        {
+            P1OUT |= BIT6;            // 亮
+            for(i=250 + 249 * sin((2*3.14*(double)j)/500); i&amp;gt;0; i--);     // 延时100
+            P1OUT &amp;amp;= ~BIT6;            // 灭
+            for(i=250 - 249 * sin((2*3.14*(double)j)/500); i&amp;gt;0; i--);     // 延时300
+        }
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;是不是觉得完全不是那么回事？甚至都看到灯在闪了，根本不是呼吸。这是因为代码中的sin对单片机的运算来说太复杂了，要花很长时间完成一步，打破了我们的规律性，所以我们可以把这个提前算好，放在数组里直接查询，这就是查表法，很多应用场景可以使用。这个表其实就是算好500个点从0~499对应的sin值，可以用excel生成或者matlab生成均可。
+EXCEL公式：=250&lt;em&gt;SIN(2&lt;/em&gt;3.1415*(A1)/500)&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;msp430.h&amp;gt;
+#include &amp;lt;math.h&amp;gt;
+
+const static int sin_table[500] =
+{3 , 6 , 9 , 13 , 16 , 19 , 22 , 25 , 28 , 31 , 34 , 38 , 41 , 44 , 47 , 50 , 53 , 56 , 59 ,
+62 , 65 , 68 , 71 , 74 , 77 , 80 , 83 , 86 , 89 , 92 , 95 , 98 , 101 , 104 , 106 , 109 ,
+112 , 115 , 118 , 120 , 123 , 126 , 129 , 131 , 134 , 137 , 139 , 142 , 144 , 147 , 149 ,
+152 , 154 , 157 , 159 , 162 , 164 , 166 , 169 , 171 , 173 , 176 , 178 , 180 , 182 , 184 ,
+186 , 189 , 191 , 193 , 195 , 197 , 198 , 200 , 202 , 204 , 206 , 208 , 209 , 211 , 213 ,
+214 , 216 , 218 , 219 , 221 , 222 , 223 , 225 , 226 , 228 , 229 , 230 , 231 , 232 , 234 ,
+235 , 236 , 237 , 238 , 239 , 240 , 241 , 241 , 242 , 243 , 244 , 244 , 245 , 246 , 246 ,
+247 , 247 , 248 , 248 , 248 , 249 , 249 , 249 , 250 , 250 , 250 , 250 , 250 , 250 , 250 ,
+250 , 250 , 250 , 250 , 249 , 249 , 249 , 248 , 248 , 248 , 247 , 247 , 246 , 246 , 245 ,
+244 , 244 , 243 , 242 , 241 , 241 , 240 , 239 , 238 , 237 , 236 , 235 , 234 , 232 , 231 ,
+230 , 229 , 228 , 226 , 225 , 223 , 222 , 221 , 219 , 218 , 216 , 214 , 213 , 211 , 209 ,
+208 , 206 , 204 , 202 , 200 , 199 , 197 , 195 , 193 , 191 , 189 , 186 , 184 , 182 , 180 ,
+178 , 176 , 173 , 171 , 169 , 167 , 164 , 162 , 159 , 157 , 154 , 152 , 149 , 147 , 144 ,
+142 , 139 , 137 , 134 , 131 , 129 , 126 , 123 , 120 , 118 , 115 , 112 , 109 , 106 , 104 ,
+101 , 98 , 95 , 92 , 89 , 86 , 83 , 80 , 77 , 74 , 71 , 68 , 65 , 62 , 59 , 56 , 53 , 50 ,
+47 , 44 , 41 , 38 , 34 , 31 , 28 , 25 , 22 , 19 , 16 , 13 , 9 , 6 , 3 , 0 , -3 , -6 , -9 ,
+-13 , -16 , -19 , -22 , -25 , -28 , -31 , -34 , -38 , -41 , -44 , -47 , -50 , -53 , -56 ,
+-59 , -62 , -65 , -68 , -71 , -74 , -77 , -80 , -83 , -86 , -89 , -92 , -95 , -98 , -101 ,
+-104 , -106 , -109 , -112 , -115 , -118 , -120 , -123 , -126 , -129 , -131 , -134 , -137 ,
+-139 , -142 , -144 , -147 , -149 , -152 , -154 , -157 , -159 , -162 , -164 , -166 , -169 ,
+-171 , -173 , -176 , -178 , -180 , -182 , -184 , -186 , -189 , -191 , -193 , -195 , -197 ,
+-198 , -200 , -202 , -204 , -206 , -208 , -209 , -211 , -213 , -214 , -216 , -218 , -219 ,
+-221 , -222 , -223 , -225 , -226 , -228 , -229 , -230 , -231 , -232 , -234 , -235 , -236 ,
+-237 , -238 , -239 , -240 , -240 , -241 , -242 , -243 , -244 , -244 , -245 , -246 , -246 ,
+-247 , -247 , -248 , -248 , -248 , -249 , -249 , -249 , -250 , -250 , -250 , -250 , -250 ,
+-250 , -250 , -250 , -250 , -250 , -250 , -249 , -249 , -249 , -248 , -248 , -248 , -247 ,
+-247 , -246 , -246 , -245 , -244 , -244 , -243 , -242 , -241 , -241 , -240 , -239 , -238 ,
+-237 , -236 , -235 , -234 , -232 , -231 , -230 , -229 , -228 , -226 , -225 , -223 , -222 ,
+-221 , -219 , -218 , -216 , -214 , -213 , -211 , -209 , -208 , -206 , -204 , -202 , -200 ,
+-199 , -197 , -195 , -193 , -191 , -189 , -187 , -184 , -182 , -180 , -178 , -176 , -173 ,
+-171 , -169 , -167 , -164 , -162 , -159 , -157 , -154 , -152 , -150 , -147 , -144 , -142 ,
+-139 , -137 , -134 , -131 , -129 , -126 , -123 , -120 , -118 , -115 , -112 , -109 , -106 ,
+-104 , -101 , -98 , -95 , -92 , -89 , -86 , -83 , -80 , -77 , -74 , -71 , -68 , -65 , -62 ,
+-59 , -56 , -53 , -50 , -47 , -44 , -41 , -38 , -34 , -31 , -28 , -25 , -22 , -19 , -16 ,
+-13 , -9 , -6 , -3 , 0};
+
+/**
+ * blink.c
+ */
+void main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;       // 停止看门狗
+    P1DIR |= BIT6;                  // 设置P1.0管脚为输出脚
+
+    volatile unsigned int i;        // volatile ，下面的延时代码不会被编译器优化
+    volatile unsigned int j;        // volatile ，下面的延时代码不会被编译器优化
+
+    while(1)
+    {
+        for(j=499; j&amp;gt;0; j--)
+        {
+            P1OUT |= BIT6;                           // 亮
+            for(i=250 + sin_table[j]; i&amp;gt;0; i--);     // 延时
+            P1OUT &amp;amp;= ~BIT6;                          // 灭
+            for(i=250 - sin_table[j]; i&amp;gt;0; i--);     // 延时
+        }
+    }
+}
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;把这个代码输入编辑器，编译运行，呼吸灯是不是做好了？&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/breath.gif&quot; alt=&quot;breath&quot; /&gt;&lt;/p&gt;
+</content:encoded></item><item><title>MSP430之ADC</title><link>https://liushuideng.com/posts/msp430-zhi-adc/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-zhi-adc/</guid><description>ADC在涉及到控制和采样的系统中，是个十分重要的组件，因为这里作为430的一个特性描述，所以通过430片上自带的ADC8来简单介绍ADC相关知识。关于ADC的详</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;ADC在涉及到控制和采样的系统中，是个十分重要的组件，因为这里作为430的一个特性描述，所以通过430片上自带的ADC8来简单介绍ADC相关知识。关于ADC的详细原理，各种类型，计划以后专门总结一下。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1&gt;为什么要有ADC？&lt;/h1&gt;
+&lt;p&gt;单纯的CPU是一个数字系统，内部只有0101，如果这个系统压根不跟我们现实世界打交道，完全“自娱自乐”，那就是我们常见的软件玩法。例如PC上应用软件、网页、服务器后端程序等等，。&lt;/p&gt;
+&lt;p&gt;但是比如智能手机需要通过前置光线感应器知道环境光线如何来决定是否需要提高屏幕亮度；空调需要知道室温从而精准的为你制冷或制热。这些场景则需要数字系统和模拟世界打交道了。&lt;/p&gt;
+&lt;p&gt;那ADC全称为（Analog Digital Convertor）,我的理解就是模拟世界到数字世界的转换器。反过来，DAC（Digital Analog Convertor）则是数字到模拟的转换器。&lt;/p&gt;
+&lt;h1&gt;430 2553上的ADC模块&lt;/h1&gt;
+&lt;p&gt;查看G2553的dataheet，可以看到它内置的是AD10模块，也就是一个10位精度的ADC，datasheet中只是对配置进行了简单的介绍，要看到ADC10的详细信息，我们还是要到family user guide中，找到第534页的ADC10的介绍。这里我们可以看到，ADC10具有如下特性：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;最大200k(20万次)每秒的采样速率&lt;/li&gt;
+&lt;li&gt;10位采样精度无误码&lt;/li&gt;
+&lt;li&gt;可编程选择的内置参考源(1.5V或者2.5V)&lt;/li&gt;
+&lt;li&gt;8个外部采样脚&lt;/li&gt;
+&lt;li&gt;内部自带一个温度采样&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;上面只挑选了文档中几个重要的特性，200k采样速率指该ADC可以每秒钟转换20W次，这个速率已经很快了，可以满足我们大部分的需求。10位精度指ADC在将模拟量转换为数字量的时候可以达到的精度；比如ADC10的采样范围是0~3.3V，那10位精度则指可以将0～3.3V等分为2的10次方即1024等分，精度可以达到3mv左右，这也是为什么这个内置模块叫做ADC10的原因，位数越大，精度越高。内置参考源存在的意义是可以帮我们省去搭建外部参考源的麻烦，上手就用。最大8个外部采样脚可以允许我们同时采样8个外部的采样点（当然内部是公用一个ADC的，需要一个一个排队依次采样，同时采是不可能的）。最后内部自带的温度采样可以实现温度计的功能，可以做一个气温计或者跟电脑CPU温度显示一样的功能，不过这个温度采样的精度比较低，想作为精确温度采样是不行的（不过也不会有人这么做）。&lt;/p&gt;
+&lt;h1&gt;ADC10的内部结构&lt;/h1&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_adc_struct.png&quot; alt=&quot;430_adc_struct&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;看过前面430时钟那一章的理解这张图应该不难，橙色框中的是ADC10的核心，是一个SAR类型的ADC（什么是SAR后面在ADC通用介绍中细说），ADC的输入接的是一个选择开关（MUX），这个就是我们为什么可以有8个输入采样引脚以及为什么要排队采样的原因。绿色框是控制采样的，位长是4位意味着最大可以支持16个输入引脚选择，2553最大只有8个，其他型号会有更多。&lt;/p&gt;
+&lt;p&gt;信号进入ADC转换前需要经过一个叫采样保持的电路，就是橙色框sample and hoid部分，因为外部输入的信号是模拟量，所以电压是不断波动的，这样的信号不行直接进行转换，需要使用一个电路对电路瞬间采样，然后把当时的电压大小记住保持不变，再输入ADC进行转换。简单的采样保持电路内部示意图如下：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_adc_sh.png&quot; alt=&quot;430_adc_sh&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;电路前面有一个开关和电容，采样的时候，开关接通，外部电压进入给电容充电，完成后断开，进入保持阶段，电容上面的电压不变，经过后面的射集跟随器，进入ADC转换。&lt;/p&gt;
+&lt;p&gt;信号进入ADC核心进行转化时，需要标准的参考源才能正常转换，图片的左上角就是内置的1.5V或2.5V参考源，通过各种选择最终可以进入ADC的VR+引脚使用。ADC内部数字电路工作需要提供时钟，所以右边蓝色框的就是时钟选择电路，在SMCLK等各种时钟中选择一个使用。&lt;/p&gt;
+&lt;p&gt;最后，我们终于将模拟量转成了数字量，数字信号可以进入灰色的框部分，供单片机软件调用就行了。&lt;/p&gt;
+&lt;h1&gt;ADC10的软件例程&lt;/h1&gt;
+&lt;p&gt;老规矩，一切基于code example，打开G2553的code example(看到这里不知道啥是code example的看下我前面的文章)，找到msp430g2x33_adc10_03.c这个例程。&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;//******************************************************************************
+//  MSP430G2x33/G2x53 Demo - ADC10, Sample A10 Temp, Set P1.0 if Temp ++ ~2C
+//
+//  Description: se ADC10 and the integrated temperature sensor to detect
+//  temperature gradients. The temperature sensor output voltage is sampled
+//  ~ every 120ms and compared with the defined delta values using an ISR.
+//  (ADC10OSC/4)/64 determines sample time which needs to be greater than
+//  30us for temperature sensor.
+//  ADC10 is operated in repeat-single channel mode with the sample and
+//  convert trigger sourced from Timer_A CCR1. The ADC10IFG at the end
+//  of each converstion will trigger an ISR.
+//  ACLK = n/a, MCLK = SMCLK = default DCO ~ 1.2MHz, ADC10CLK = ADC10OSC
+//
+//                MSP430G2x33/G2x53
+//             -----------------
+//         /|\|              XIN|-
+//          | |                 |
+//          --|RST          XOUT|-
+//            |                 |
+//            |A10          P1.0|--&amp;gt;LED
+//
+//  D. Dang
+//  Texas Instruments Inc.
+//  December 2010
+//   Built with CCS Version 4.2.0 and IAR Embedded Workbench Version: 5.10
+//******************************************************************************
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;看例程中的注释，ADC10将会每120ms采样测量一次温度，如果温度比程序启动时高了超过2度，红色LED灯将会亮起，否则熄灭。我们将这段程序下到launchpad中，效果如下：&lt;/p&gt;
+&lt;p&gt;下面是对程序的解释：&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;msp430.h&amp;gt;
+
+static unsigned int FirstADCVal;            // 缓存程序启动时的温度初始值
+
+#define ADCDeltaOn       3                  // 温度上升超过大约2度时翻转LED灯
+
+int main(void)
+{
+  // 关闭看门狗
+  WDTCTL = WDTPW + WDTHOLD;                 
+  // ADC10DIV_3:输入时钟三分频 INCH_10:结构图可知，通道10连接着温度电阻 SHS_1:TA3 OUT1触发采样保持 CONSEQ_2:单通道重复采样
+  ADC10CTL1 = ADC10DIV_3 + INCH_10 + SHS_1 + CONSEQ_2;
+  // 内部参考源，64个ADC时钟一次采样，2.5V参考源，使能ADC中断，开启参考源，开启ADC10
+  ADC10CTL0 = SREF_1 + ADC10SHT_3 + REF2_5V + ADC10IE + REFON + ADC10ON;
+  // 使能全局中断
+  __enable_interrupt();
+  TACCR0 = 30;                              // Delay to allow Ref to settle
+  TACCTL0 |= CCIE;                          // Compare-mode interrupt.
+  TACTL = TASSEL_2 | MC_1;                  // TACLK = SMCLK, Up mode.
+  LPM0;                                     // Wait for delay.
+  TACCTL0 &amp;amp;= ~CCIE;                         // Disable timer Interrupt
+  __disable_interrupt();
+  ADC10CTL0 |= ENC;
+  TACCTL1 = OUTMOD_4;                       // Toggle on EQU1 (TAR = 0)
+  TACTL = TASSEL_2 + MC_2;                  // SMCLK, cont-mode
+  while (!(ADC10IFG &amp;amp; ADC10CTL0));          // First conversion?
+  FirstADCVal = ADC10MEM;                   // Read out 1st ADC value
+  P1OUT = 0x00;                             // Clear P1
+  P1DIR = 0x01;                             // P1.0 as output
+  __bis_SR_register(LPM0_bits + GIE);       // Enter LPM0 w/ interrupt
+}
+
+
+#pragma vector=ADC10_VECTOR
+__interrupt void ADC10_ISR (void)
+{
+  if (ADC10MEM &amp;gt;= FirstADCVal + ADCDeltaOn)
+    P1OUT |= 0x01;                          // LED on
+  else
+    P1OUT &amp;amp;= ~0x01;                         // LED off
+}
+
+
+#pragma vector=TIMER0_A0_VECTOR
+__interrupt void ta0_isr(void)
+{
+  TACTL = 0;
+  LPM0_EXIT;                                // Exit LPM0 on return
+}
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;上面只挑选了重点的寄存器进行了注释，具体寄存器的含义，有两种方法可以看到是什么意思，其他的可以举一反三。一种如果使用的是CCS，按住CTRL+左键单击寄存器，可以跳到宏定义的头文件，官方对每个取值进行了注释。第二种就是参看《MSP430x2xx Family User&apos;s Guide》文档，搜索寄存器，查看字段解释。&lt;/p&gt;
+</content:encoded></item><item><title>MSP430之定时器</title><link>https://liushuideng.com/posts/msp430-zhi-ding-shi-qi/</link><guid isPermaLink="true">https://liushuideng.com/posts/msp430-zhi-ding-shi-qi/</guid><description>上一节之所以先介绍了枯燥而且没什么对外效果的时钟部分，就是给本章定时器做铺垫的。不论是MCU还是操作系统内的软定时器，实质上都是时钟+计数器实现的，430的计数</description><pubDate>Tue, 23 May 2023 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;
+&lt;p&gt;上一节之所以先介绍了枯燥而且没什么对外效果的时钟部分，就是给本章定时器做铺垫的。不论是MCU还是操作系统内的软定时器，实质上都是时钟+计数器实现的，430的计数器有好几种模式，如果理解了它本质上就是一个简单的计数这个点，所有的模式用起来就得心应手了。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;如果一块MCU没有定时器，可不可以用呢？完全可以，前面的那些博客都没有用到定时器。但是，没有定时器，那么和其他一票外设齐全的MCU相比就存在硬伤了，再某些场景下用起来会很不方便。举个例子，前面做了个呼吸灯，按照前面的代码可以顺利作出效果来。现在别人要求，有呼吸灯的同时还要做个其他计算的任务。这个可以做吗？前面我们试过，呼吸灯里面有一个sin的计算，光是计算这个，呼吸灯都卡的一闪一闪的，明显就不行。如果使用定时器，我们可以用定时器更优雅的实现前面的呼吸灯，把CPU解放出来，做其他需要处理的事情。&lt;/p&gt;
+&lt;p&gt;总结来说，在实际应用中，需要对外部事件进行计数、定时控制、PWM等定制波形输出、脉冲宽度测量、速度测量、周期/频率测量、事件发生时刻的捕捉……，这些测量与控制功能均可借助定时器/计数器来实现。&lt;/p&gt;
+&lt;h2&gt;430定时器介绍&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_2553_diagram.png&quot; alt=&quot;430_2553_diagram&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;MCU根据型号不同一般会有多个定时器，上面是2553的内部框图，有Timer0和Timer1两个定时器，不过还有个看门狗，也是一个特殊的定时器。(我就碰到过定时器资源实在是不够用了，把看门狗临时拿来当普通定时器用。不过工业级应用肯定不会这么用，硬件看门狗是保证系统可靠性的重要部件，后面可以好好研究一下)。&lt;/p&gt;
+&lt;p&gt;430内部配备的是一个16位的定时器（位数大小有什么关系？位数越大，可以计的数越多，在CPU频率一样的情况下，一个计数到最大的时间就越长，用起来方便），结构如下图：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_16bit_timer.png&quot; alt=&quot;430_16bit_timer&quot; /&gt;&lt;/p&gt;
+&lt;h3&gt;定时器结构------时钟源选择&lt;/h3&gt;
+&lt;p&gt;上面时钟部分介绍过一些基本的框图组成元素，所以这张图应该看起来不陌生吧。前面输入是时钟的选择，可以选择不同频率的时钟源，时钟越快，能计时的周期越短，不过计时的精度越高哦。例如，1MHz的时钟输入，计时的精度是1/1000000秒，但计时器一个周期只能计数65535/1000000秒，如果我们用32.768kHz的时钟，我们计时的精度就是1/32768秒，一个周期就是65535/32768秒。（以前做过开关电源PWM波生成，对波形生成的精度要求很高，430最高频率32MHz都达不到，所以用400MHz的FPGA来达到。现在STM32的部分型号，专门为高精度PWM定时器设计，可以达到的精度更高，这里就可以看出来定时器参数的影响作用了）&lt;/p&gt;
+&lt;h3&gt;定时器结构------分频器&lt;/h3&gt;
+&lt;p&gt;再往后面看是分频器，分频器的作用就是把输入的频率一分为二、四、八，降低频率值，前面频率越高精度越高，但周期也越短。周期短有什么弊端？举个例子，如果你有个指示灯想1s闪烁一次，如果CPU主频是1M，16位定时器的周期我们算了是65535/1000000秒，这不到一秒啊。定时器计满之后，我还要写代码记着，再接着定时，直到满1s为止，这样就太麻烦了。&lt;/p&gt;
+&lt;p&gt;解决办法有三个：&lt;/p&gt;
+&lt;p&gt;一个是降低定时器的输入时钟频率，例如从高频的SMCLK换成ACLK。&lt;/p&gt;
+&lt;p&gt;二是提高计数器的位数，如果将16位定时器换成32位，那周期就是2^32/1000000秒，远远够1s了，但430内部固定就是16位了，没法改。&lt;/p&gt;
+&lt;p&gt;三就是分频了，把计数频率降低的同时，又不影响性能。&lt;/p&gt;
+&lt;p&gt;将1M主频8分频，已经很接近0.5s了，如果非要单次周期1s的话，就要配合方法一，把输入频率改成低频的32768Hz时钟源即可。&lt;/p&gt;
+&lt;h3&gt;定时器结构------计数器&lt;/h3&gt;
+&lt;p&gt;这个就是定时器的核心，16位的计数器，它的内部实现感兴趣的可以搜索数字电路16位计数器的结构，这个我们可以用分立的基本逻辑单元搭出来。我们这里可以先不关心这么细的，看下外部的几个线，一个是CLEAR清零，左边有个向上的箭头，表示输入波形的上升沿会让计数清零，又从0开始计数。这个信号的来源不是外部引脚输入的，而是来自寄存器，我们把TACLR寄存器用代码(c也好汇编也好)从0改成1,信号就会从0到1有个上升沿(寄存器的模型我们前面也简单介绍过哦)。然后右边，有个溢出脚，通向TAIFG寄存器。这里有两点要提的：&lt;/p&gt;
+&lt;p&gt;一个是这里的溢出不一定要16位计满，从0数到65535才算溢出，我们可以指定计数的上限，比如我们设定上限是50000,到50000也会触发溢出。上限可设是很方便的，因为65535不能被整除，用起来很麻烦。&lt;/p&gt;
+&lt;p&gt;二是这里溢出之后，除了将TAIFG置位，从0变成1之外。这个TAIFG上升沿还会触发定时器的中断，不然内部只是偷偷将TAIFG置位，用户是不知道的。（中断前面讲过，翻翻中断源那张表你就能找到定时器的TAIFG中断，当然定时器还不止这一个中断哦，仔细看）。&lt;/p&gt;
+&lt;h3&gt;定时器结构------输出模式选择&lt;/h3&gt;
+&lt;p&gt;这个可以决定输出波形在计数器到达各种特定的中断值后是置1还是归0还是翻转，内部结构具体也不做揣测，预计应该是寄存器控制简单的反相电路实现，但几种模式的区别和用法，介绍完下面的计数器工作模式后，我贴出官方文档各种输出模式下的波形图，大家一看便知其间的区别。&lt;/p&gt;
+&lt;h2&gt;定时器工作模式&lt;/h2&gt;
+&lt;p&gt;定时器的几种工作模式的详细介绍，可以参见官方文档MSP430x2xx Family User&apos;s Guide.pdf的第12章节，官方事无巨细地介绍了各种模式下的一切信息，包括各种中断到底再第n个还是n+1个周期触发的等。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_timer_mode.png&quot; alt=&quot;430_timer_mode&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这里从简单快速理解的角度，概要的介绍几种工作模式的特点及典型用法，如果决定使用某种模式并对实现细节很关注的话，建议阅读官方文档。&lt;/p&gt;
+&lt;h3&gt;定时器工作模式------向上计数模式&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_timer_up_mode.png&quot; alt=&quot;430_timer_up_mode&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;这是最简单的一个模式，存在的意义就是方便我们自定义计数的周期。前面介绍部分的倒数第二段，我们说过要设置一个50000的上限，这样方便我们按整数时间定时。那这里的上限说的就是向上计数模式中的TACCR0，我们写代码&lt;code&gt;TACCR0=50000;&lt;/code&gt;就可以设置这个值，当工作在向上计数模式时，计数器就会像图中画的一样从0开始计数，到指定上限后归0重新计数。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_timer_up_mode_timing.png&quot; alt=&quot;430_timer_up_mode_timing&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;上面这张图描述了计数器计数并出发中断的细节，如果我们要计数50000个周期，我们使用的是TAIFG这个中断，那我们的TACCR0应该是49999而不是50000,因为TAIFG是从0开始到第CCR0个周期触发，是CCR0+1个周期，TACCR0 CCIFG中断才是正好CCR0个周期出发。不过平常我们见到的大部分例程都习惯使用TAIFG中断，所以要注意这里的区别，在CCR0比较大时可能不易察觉出来这个差距，但如果是几十个甚至几个时钟周期，这个差距就比较明显了。官方文档里还介绍了如果在定时器运行的过程中，如果修改定时器模式或者CCR0的值，计数器会如何工作，是立即归零重新计数还是接着计完当前周期，都有介绍。如果你设计的是精密的电源、电机、高压大电流的控制系统，请务必仔细研究官方文档这些细节上的差异。下面的几个模式都是这样去理解，我就只贴图不解释了。&lt;/p&gt;
+&lt;h3&gt;定时器工作模式------持续计数模式&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_timer_continue_mode.png&quot; alt=&quot;430_timer_continue_mode&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;该模式简单粗暴的直接从0计数到65535然后重新计数，并在计数完成后出发TAIFG中断，所以计数周期就是65536个时钟周期。&lt;/p&gt;
+&lt;p&gt;这种工作模式一般用来固定的产生一些定时频率输出，设置好后可以完全让硬件持续计数，不需要CPU额外干预。&lt;/p&gt;
+&lt;h3&gt;定时器工作模式------向上向下计数模式&lt;/h3&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_timer_updown_mode.png&quot; alt=&quot;430_timer_updown_mode&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;UP DOWN模式可以用在带死区的SPWM波产生上，PWM波就是占空比可变化的方波，SPWM波就是占空比按照正弦规律变化的方波，在开关电源的控制中，SPWM波的两个互相相反的波形上升沿和下降沿需要带有一定的间隔，这就是死区。SPWM波和死区在开关电源、电机控制上有用，建议需要用到时再详细了解，本小结简单介绍下，知道存在这么一个模式即可。&lt;/p&gt;
+&lt;p&gt;如图中所画，UP/DOWM模式是计数到TACCR0再向下计数到0为一个周期。如果设置了TACCR1和TACCR2，则分别可以在430特定的两个引脚上输出两个对应的波形。TACCR1和TACCR2的差值就可以控制死区的大小。&lt;/p&gt;
+&lt;p&gt;不过值得一提的是，受限于430的主控频率较低，不能产生频率变化和死区控制很精密的SPWM波，这两点均会影响到开关电源的工作效率和谐波分量，相信如果你真的正在研究开关电源，实验一下也可以知道这个差距，详细的内容，我会在后面开关电源专门的文章中介绍，430也不是万能的，会有其他可替代的解决方案。&lt;/p&gt;
+&lt;h3&gt;定时器工作模式------捕获模式&lt;/h3&gt;
+&lt;p&gt;430的定时器还有一个捕获模式和比较模式之分，比较模式就是上面讲的东西，捕获模式则是另一种430支持的工作模式。简单讲可以这么理解，比较模式是定时器跑到一定的周期数，触发一个中断进行相应处理。而捕获模式则是反过来，定时器正常计数，外部的输入信号来触发定时器停止计数。&lt;/p&gt;
+&lt;p&gt;由输入信号触发不就是相当于捕获了外部信号的变化吗？这就是捕获模式的名称由来。这个功能可以用来测量两个事件的时间间隔、测量信号频率，测量电机的转速等等。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://image.liushuideng.com/images/blog/430_timer_cap_mode.png&quot; alt=&quot;430_timer_cap_mode&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;上图是430捕获模式下的时序图，Capture表示输入信号，当设置上升沿捕获的时候，输入信号上升沿会触发CCIFG中断，并把当前的计数器值N读到寄存器中。读取N我们就能知道定时器计时的时间长度了。&lt;/p&gt;
+&lt;h2&gt;用法示例&lt;/h2&gt;
+&lt;h3&gt;简单的周期定时&lt;/h3&gt;
+&lt;p&gt;产生周期为1s的定时器中断，在中断中翻转板上的红灯状态。&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;void TimerWave()
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  if (CALBC1_1MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_1MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_1MHZ;
+  P1DIR |= BIT0;                            // P1.0 output
+  CCTL0 = CCIE;                             // CCR0 interrupt enabled
+  CCR0 = 50000;
+  TACTL = TASSEL_2 + MC_2;                  // SMCLK, contmode
+}
+
+// Timer A0 interrupt service routine
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=TIMER0_A0_VECTOR
+__interrupt void Timer_A (void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  counter++;
+  if(counter%20 == 0)
+    P1OUT ^= BIT0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;PWM波产生与占空比调节&lt;/h3&gt;
+&lt;p&gt;产生周期为100K，占空比为30%的PWM波&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;void TM1()
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  if (CALBC1_1MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_1MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_1MHZ;
+  P1DIR |= BIT2;                            // P1.2 and P1.3 output
+  P1SEL |= BIT2;                            // P1.2 and P1.3 TA1/2 options
+  CCR0 = 20-1;                             // PWM Period
+  CCTL1 = OUTMOD_7;                         // CCR1 reset/set
+  CCR1 = 6;                               // CCR1 PWM duty cycle
+  TACTL = TASSEL_2 + MC_1;                  // SMCLK, up mode
+  CCTL0 &amp;amp;= ~CCIE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;较高频率高精度PWM波产生&lt;/h3&gt;
+&lt;p&gt;产生周期为400K，占空比为50%的方波&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;void TM2()
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  if (CALBC1_16MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_16MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_16MHZ;
+  P1DIR |= BIT2;                            // P1.2 and P1.3 output
+  P1SEL |= BIT2;                            // P1.2 and P1.3 TA1/2 options
+  CCR0 = 80-1;                             // PWM Period
+  CCTL1 = OUTMOD_7;                         // CCR1 reset/set
+  CCR1 = 40;                               // CCR1 PWM duty cycle
+  TACTL = TASSEL_2 + MC_1;                  // SMCLK, up mode
+  CCTL0 &amp;amp;= ~CCIE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;看门狗作为普通定时器用法&lt;/h3&gt;
+&lt;p&gt;利用G2系列单片机片上看门狗定时器，产生0.25s周期的中断，翻转板上绿灯状态&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;void WDT()
+{
+  if (CALBC1_1MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_1MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_1MHZ;
+  WDTCTL = WDT_MDLY_32;                     // Set Watchdog Timer interval to ~30ms
+  IE1 |= WDTIE;                             // Enable WDT interrupt
+  P1DIR |= BIT0;                            // Set P1.0 to output direction
+}
+
+// Watchdog Timer interrupt service routine
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=WDT_VECTOR
+__interrupt void watchdog_timer(void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(WDT_VECTOR))) watchdog_timer (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  P1OUT ^= BIT6;                            // Toggle P1.0 using exclusive-OR
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;组合：按键中断+定时器&lt;/h3&gt;
+&lt;p&gt;上述功能1、2、3、4通过板上按键依次切换，按键通过扫描或者IO口中断实现均可&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;
+#include &quot;msp430g2553.h&quot;
+
+unsigned int counter = 0;
+unsigned char state = 0;
+
+void TimerWave()
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  if (CALBC1_1MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_1MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_1MHZ;
+  P1DIR |= BIT0;                            // P1.0 output
+  CCTL0 = CCIE;                             // CCR0 interrupt enabled
+  CCR0 = 50000;
+  TACTL = TASSEL_2 + MC_2;                  // SMCLK, contmode
+}
+
+void WDT()
+{
+  if (CALBC1_1MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_1MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_1MHZ;
+  WDTCTL = WDT_MDLY_32;                     // Set Watchdog Timer interval to ~30ms
+  IE1 |= WDTIE;                             // Enable WDT interrupt
+  P1DIR |= BIT0;                            // Set P1.0 to output direction
+}
+
+void TM1()
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  if (CALBC1_1MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_1MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_1MHZ;
+  P1DIR |= BIT2;                            // P1.2 and P1.3 output
+  P1SEL |= BIT2;                            // P1.2 and P1.3 TA1/2 options
+  CCR0 = 20-1;                             // PWM Period
+  CCTL1 = OUTMOD_7;                         // CCR1 reset/set
+  CCR1 = 6;                               // CCR1 PWM duty cycle
+  TACTL = TASSEL_2 + MC_1;                  // SMCLK, up mode
+  CCTL0 &amp;amp;= ~CCIE;
+}
+
+void TM2()
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  if (CALBC1_16MHZ==0xFF)					// If calibration constant erased
+  {											
+    while(1);                               // do not load, trap CPU!!	
+  }
+  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
+  BCSCTL1 = CALBC1_16MHZ;                    // Set DCO to 8MHz
+  DCOCTL = CALDCO_16MHZ;
+  P1DIR |= BIT2;                            // P1.2 and P1.3 output
+  P1SEL |= BIT2;                            // P1.2 and P1.3 TA1/2 options
+  CCR0 = 80-1;                             // PWM Period
+  CCTL1 = OUTMOD_7;                         // CCR1 reset/set
+  CCR1 = 40;                               // CCR1 PWM duty cycle
+  TACTL = TASSEL_2 + MC_1;                  // SMCLK, up mode
+  CCTL0 &amp;amp;= ~CCIE;
+}
+
+int main(void)
+{
+  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+  P1DIR |= BIT0 + BIT6;
+  P1OUT &amp;amp;= ~(BIT0 + BIT6);
+  P1DIR &amp;amp;= ~BIT3;
+  P1REN |= BIT3;
+  P1OUT |= BIT3;
+  P1IES |= BIT3;
+  P1IE |= BIT3;
+  P1IFG = 0;
+  //while(1);
+  __bis_SR_register(LPM0_bits + GIE);       // Enter LPM0 w/ interrupt
+}
+
+// Timer A0 interrupt service routine
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=TIMER0_A0_VECTOR
+__interrupt void Timer_A (void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  counter++;
+  if(counter%20 == 0)
+    P1OUT ^= BIT0;
+}
+
+// Port 1 interrupt service routine
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=PORT1_VECTOR
+__interrupt void Port_1(void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(PORT1_VECTOR))) Port_1 (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  if(P1IFG&amp;amp;BIT3)
+  {
+    __delay_cycles(10000);
+    if((P1IN&amp;amp;BIT3) == 0)
+    {
+      state++;
+      switch(state)
+      {
+      case 1:
+        TimerWave();
+        break;
+      case 2:
+        WDT();
+        break;
+      case 3:
+        TM1();
+        break;
+      case 4:
+        TM2();
+        break;
+      default:break;
+      }
+      if(state == 4)
+      {
+        state = 0;
+      }
+    }
+  }
+  P1IFG = 0;
+}
+
+
+// Watchdog Timer interrupt service routine
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=WDT_VECTOR
+__interrupt void watchdog_timer(void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(WDT_VECTOR))) watchdog_timer (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  P1OUT ^= BIT6;                            // Toggle P1.0 using exclusive-OR
+}
+&lt;/code&gt;&lt;/pre&gt;
+</content:encoded></item></channel></rss>
