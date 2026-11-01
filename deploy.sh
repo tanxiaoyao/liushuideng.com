@@ -13,6 +13,7 @@ git push origin main 2>&1 | grep -E "main|error" || true
 
 echo "[3/3] 推送产物 (gh-pages)..."
 cd dist
+touch .nojekyll
 git init -q -b gh-pages 2>/dev/null || true
 git add -A
 git commit -q -m "deploy: $(date +%Y-%m-%d_%H:%M)" || echo "  产物无变更"
