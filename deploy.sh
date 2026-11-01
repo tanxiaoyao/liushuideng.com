@@ -13,9 +13,12 @@ git push origin main 2>&1 | grep -E "main|error" || true
 
 echo "[3/3] 推送产物 (gh-pages)..."
 cd dist
+git init -q -b gh-pages 2>/dev/null || true
 git add -A
-git commit -m "deploy: $(date +%Y-%m-%d_%H:%M)" || echo "  产物无变更"
-git push origin gh-pages 2>&1 | grep -E "gh-pages|error" || true
+git commit -q -m "deploy: $(date +%Y-%m-%d_%H:%M)" || echo "  产物无变更"
+git remote remove origin 2>/dev/null || true
+git remote add origin https://github.com/tanxiaoyao/liushuideng.com.git
+git push origin gh-pages --force 2>&1 | grep -E "gh-pages|error" || true
 
 echo "✅ 部署完成，CDN 生效约需 1-5 分钟"
 echo "   站点: https://liushuideng.com/"
